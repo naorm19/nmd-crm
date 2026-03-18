@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NMD CRM - לוח בקרה</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #080c14;
+    --surface:  #0f1623;
+    --surface2: #161f30;
+    --surface3: #1e2a3e;
+    --border:   #1e2d45;
+    --accent:   #3b82f6;
+    --accent2:  #60a5fa;
+    --green:    #10b981;
+    --yellow:   #f59e0b;
+    --red:      #ef4444;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --muted2:   #94a3b8;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Heebo', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    direction: rtl;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+  .logo span { color: var(--accent); }
+
+  .header-meta {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .sync-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: 'Heebo', sans-serif;
+    cursor: pointer;
+    font-weight: 600;
+    transition: opacity 0.2s;
+  }
+  .sync-btn:hover { opacity: 0.85; }
+  .sync-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── TABS ── */
+  .tabs-wrapper {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .tabs {
+    display: inline-flex;
+    gap: 4px;
+    padding: 8px 0;
+  }
+
+  .tab {
+    padding: 7px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    color: var(--muted2);
+    background: transparent;
+    font-family: 'Heebo', sans-serif;
+    white-space: nowrap;
+  }
+
+  .tab:hover {
+    background: var(--surface2);
+    color: var(--text);
+  }
+
+  .tab.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  /* ── MAIN ── */
+  .main {
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* ── OVERVIEW PAGE ── */
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+
+  .client-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .client-card::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 3px;
+    height: 100%;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .client-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(59,130,246,0.15);
+  }
+
+  .client-card:hover::before { opacity: 1; }
+
+  .client-name {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .platform-badges {
+    display: flex;
+    gap: 6px;
+  }
+
+  .badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-weight: 600;
+  }
+
+  .badge-meta { background: rgba(24,119,242,0.2); color: #60a5fa; }
+  .badge-google { background: rgba(234,67,53,0.2); color: #f87171; }
+
+  .client-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .stat-item {}
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .stat-value {
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .stat-value.green { color: var(--green); }
+  .stat-value.yellow { color: var(--yellow); }
+  .stat-value.blue { color: var(--accent2); }
+
+  .budget-bar-wrap {
+    margin-top: 14px;
+  }
+  .budget-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .budget-bar {
+    height: 4px;
+    background: var(--surface3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .budget-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--green);
+    transition: width 0.5s ease;
+  }
+  .budget-bar-fill.warn { background: var(--yellow); }
+  .budget-bar-fill.danger { background: var(--red); }
+
+  /* ── CLIENT DETAIL PAGE ── */
+  .client-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+
+  .client-title {
+    font-size: 24px;
+    font-weight: 800;
+  }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .kpi-label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+
+  .kpi-val {
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .kpi-sub {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── CAMPAIGNS TABLE ── */
+  .section-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--muted2);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead tr {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  th {
+    padding: 12px 16px;
+    text-align: right;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+
+  td {
+    padding: 12px 16px;
+    color: var(--text);
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-left: 8px;
+  }
+  .status-dot.active { background: var(--green); }
+  .status-dot.paused { background: var(--yellow); }
+
+  /* ── LOADING / EMPTY ── */
+  .loading {
+    text-align: center;
+    padding: 60px;
+    color: var(--muted);
+  }
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty {
+    text-align: center;
+    padding: 40px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* ── CONFIG MODAL ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    width: 480px;
+    max-width: 90vw;
+  }
+
+  .modal h2 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 20px;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-label {
+    font-size: 12px;
+    color: var(--muted2);
+    margin-bottom: 6px;
+    display: block;
+    font-weight: 500;
+  }
+
+  .form-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: 'Heebo', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .form-input:focus { border-color: var(--accent); }
+
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .btn-primary {
+    flex: 1;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Heebo', sans-serif;
+  }
+
+  .btn-secondary {
+    flex: 1;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: 'Heebo', sans-serif;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--green);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: transform 0.3s;
+    z-index: 300;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">NMD <span>CRM</span></div>
+  <div class="header-meta">
+    <span id="last-sync">טוען...</span>
+    <button class="sync-btn" onclick="showConfig()">⚙️ הגדרות</button>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs-wrapper">
+  <div class="tabs" id="tabs">
+    <button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main" id="main">
+  <div class="loading">
+    <div class="spinner"></div>
+    <div>טוען נתונים...</div>
+  </div>
+</div>
+
+<!-- CONFIG MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2>⚙️ הגדרות חיבור Supabase</h2>
+    <div class="form-group">
+      <label class="form-label">Supabase URL</label>
+      <input class="form-input" id="cfg-url" placeholder="https://xxxx.supabase.co" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Supabase Anon Key</label>
+      <input class="form-input" id="cfg-key" placeholder="eyJhbGci..." />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="saveConfig()">שמור</button>
+      <button class="btn-secondary" onclick="closeConfig()">ביטול</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────
+const CFG_KEY = 'nmd_crm_cfg';
+
+function getConfig() {
+  try { return JSON.parse(localStorage.getItem(CFG_KEY)) || {}; } catch { return {}; }
+}
+
+function saveConfig() {
+  const url = document.getElementById('cfg-url').value.trim();
+  const key = document.getElementById('cfg-key').value.trim();
+  if (!url || !key) { showToast('נא למלא את כל השדות', 'red'); return; }
+  localStorage.setItem(CFG_KEY, JSON.stringify({ url, key }));
+  closeConfig();
+  showToast('✅ נשמר! טוען נתונים...');
+  init();
+}
+
+function showConfig() {
+  const cfg = getConfig();
+  document.getElementById('cfg-url').value = cfg.url || '';
+  document.getElementById('cfg-key').value = cfg.key || '';
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeConfig() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+function showToast(msg, color = 'green') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = color === 'red' ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── SUPABASE FETCH ───────────────────────────────────────────
+async function supaFetch(path, params = '') {
+  const { url, key } = getConfig();
+  if (!url || !key) { showConfig(); throw new Error('No config'); }
+
+  const res = await fetch(`${url}/rest/v1/${path}${params}`, {
+    headers: {
+      'apikey': key,
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+  return res.json();
+}
+
+// ── DATA ─────────────────────────────────────────────────────
+let clients = [];
+let insights = {};
+let campaigns = {};
+
+async function loadData() {
+  // Load clients
+  clients = await supaFetch('clients', '?is_active=eq.true&order=business_name');
+
+  // Load today's insights per client
+  const today = new Date().toISOString().split('T')[0];
+  const insightRows = await supaFetch('daily_insights',
+    `?date=eq.${today}&select=client_id,platform,spend,leads,conversions,clicks`);
+
+  insights = {};
+  insightRows.forEach(r => {
+    if (!insights[r.client_id]) insights[r.client_id] = { spend: 0, leads: 0, clicks: 0 };
+    insights[r.client_id].spend   += parseFloat(r.spend || 0);
+    insights[r.client_id].leads   += parseInt(r.leads || 0) + parseInt(r.conversions || 0);
+    insights[r.client_id].clicks  += parseInt(r.clicks || 0);
+  });
+
+  // Load campaigns per client
+  const campRows = await supaFetch('campaigns',
+    `?select=id,client_id,campaign_name,platform,status,daily_budget`);
+
+  campaigns = {};
+  campRows.forEach(c => {
+    if (!campaigns[c.client_id]) campaigns[c.client_id] = [];
+    campaigns[c.client_id].push(c);
+  });
+
+  document.getElementById('last-sync').textContent =
+    'עודכן: ' + new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ── OVERVIEW ─────────────────────────────────────────────────
+let activeTab = 'overview';
+
+function showOverview() {
+  activeTab = 'overview';
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-overview').classList.add('active');
+  renderOverview();
+}
+
+function renderOverview() {
+  const main = document.getElementById('main');
+
+  if (!clients.length) {
+    main.innerHTML = '<div class="empty">אין לקוחות במערכת</div>';
+    return;
+  }
+
+  const cards = clients.map(c => {
+    const ins  = insights[c.id] || { spend: 0, leads: 0, clicks: 0 };
+    const budget = (c.monthly_budget_meta || 0) + (c.monthly_budget_google || 0);
+    const mtdSpend = ins.spend; // simplified - today only for now
+    const pct = budget > 0 ? Math.min(100, (mtdSpend / budget * 100)).toFixed(0) : 0;
+    const barClass = pct > 90 ? 'danger' : pct > 70 ? 'warn' : '';
+
+    const hasMeta   = !!c.meta_ad_account_id;
+    const hasGoogle = !!c.google_customer_id;
+
+    return `
+      <div class="client-card" onclick="showClient(${c.id})">
+        <div class="client-name">
+          <span>${c.business_name}</span>
+          <div class="platform-badges">
+            ${hasMeta   ? '<span class="badge badge-meta">Meta</span>' : ''}
+            ${hasGoogle ? '<span class="badge badge-google">Google</span>' : ''}
+          </div>
+        </div>
+        <div class="client-stats">
+          <div class="stat-item">
+            <div class="stat-label">הוצאה היום</div>
+            <div class="stat-value blue">$${ins.spend.toFixed(0)}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">לידים היום</div>
+            <div class="stat-value green">${ins.leads}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">קמפיינים</div>
+            <div class="stat-value">${(campaigns[c.id] || []).length}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">CPL היום</div>
+            <div class="stat-value yellow">
+              ${ins.leads > 0 ? '$' + (ins.spend / ins.leads).toFixed(0) : '-'}
+            </div>
+          </div>
+        </div>
+        ${budget > 0 ? `
+        <div class="budget-bar-wrap">
+          <div class="budget-bar-label">
+            <span>ניצול תקציב</span>
+            <span>${pct}%</span>
+          </div>
+          <div class="budget-bar">
+            <div class="budget-bar-fill ${barClass}" style="width:${pct}%"></div>
+          </div>
+        </div>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  main.innerHTML = `<div class="overview-grid">${cards}</div>`;
+}
+
+// ── CLIENT DETAIL ─────────────────────────────────────────────
+function showClient(clientId) {
+  const c   = clients.find(x => x.id === clientId);
+  const ins = insights[clientId] || { spend: 0, leads: 0, clicks: 0 };
+  const camps = (campaigns[clientId] || []);
+
+  activeTab = clientId;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${clientId}`)?.classList.add('active');
+
+  const cpl = ins.leads > 0 ? '$' + (ins.spend / ins.leads).toFixed(0) : '-';
+
+  const campRows = camps.map(camp => {
+    const statusClass = camp.status === 'ENABLED' || camp.status === 'ACTIVE' ? 'active' : 'paused';
+    const platBadge = camp.platform === 'facebook'
+      ? '<span class="badge badge-meta">Meta</span>'
+      : '<span class="badge badge-google">Google</span>';
+    return `
+      <tr>
+        <td><span class="status-dot ${statusClass}"></span>${camp.campaign_name || '-'}</td>
+        <td>${platBadge}</td>
+        <td>${camp.status || '-'}</td>
+        <td>${camp.daily_budget ? '$' + parseFloat(camp.daily_budget).toFixed(0) : '-'}</td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('main').innerHTML = `
+    <div class="client-header">
+      <div class="client-title">${c.business_name}</div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">הוצאה היום</div>
+        <div class="kpi-val" style="color:var(--accent2)">$${ins.spend.toFixed(0)}</div>
+        <div class="kpi-sub">כל הפלטפורמות</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">לידים היום</div>
+        <div class="kpi-val" style="color:var(--green)">${ins.leads}</div>
+        <div class="kpi-sub">Meta + Google</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">עלות לליד</div>
+        <div class="kpi-val" style="color:var(--yellow)">${cpl}</div>
+        <div class="kpi-sub">היום</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">קליקים היום</div>
+        <div class="kpi-val">${ins.clicks}</div>
+        <div class="kpi-sub">כל הפלטפורמות</div>
+      </div>
+    </div>
+
+    <div class="section-title">קמפיינים פעילים</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>שם קמפיין</th>
+            <th>פלטפורמה</th>
+            <th>סטטוס</th>
+            <th>תקציב יומי</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${campRows || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">אין קמפיינים</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// ── TABS ─────────────────────────────────────────────────────
+function buildTabs() {
+  const tabs = document.getElementById('tabs');
+  const existing = clients.map(c => `
+    <button class="tab" id="tab-${c.id}" onclick="showClient(${c.id})">${c.business_name}</button>
+  `).join('');
+
+  tabs.innerHTML = `
+    <button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>
+    ${existing}
+  `;
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+async function init() {
+  const cfg = getConfig();
+  if (!cfg.url || !cfg.key) {
+    document.getElementById('main').innerHTML =
+      '<div class="empty">👆 לחץ על הגדרות כדי לחבר את Supabase</div>';
+    showConfig();
+    return;
+  }
+
+  try {
+    await loadData();
+    buildTabs();
+    renderOverview();
+  } catch(e) {
+    document.getElementById('main').innerHTML =
+      `<div class="empty">❌ שגיאת חיבור: ${e.message}</div>`;
+    console.error(e);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
