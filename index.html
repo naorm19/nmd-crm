@@ -66,4 +66,209 @@
   .budget-bar-wrap { margin-top: 14px; }
   .budget-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
   .budget-bar { height: 4px; background: var(--surface3); border-radius: 2px; overflow: hidden; }
-  .budget-bar-fill { height: 100%; border-radius: 2px; background: var(--green)
+  .budget-bar-fill { height: 100%; border-radius: 2px; background: var(--green); transition: width 0.5s ease; }
+  .budget-bar-fill.warn { background: var(--yellow); }
+  .budget-bar-fill.danger { background: var(--red); }
+  .client-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .client-title { font-size: 24px; font-weight: 800; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-weight: 500; }
+  .kpi-val { font-size: 28px; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+  .kpi-sub { font-size: 11px; color: var(--muted); }
+  .section-title { font-size: 14px; font-weight: 700; color: var(--muted2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: var(--surface2); border-bottom: 1px solid var(--border); }
+  th { padding: 12px 16px; text-align: right; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  td { padding: 12px 16px; color: var(--text); }
+  .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-left: 8px; }
+  .status-dot.active { background: var(--green); }
+  .status-dot.paused { background: var(--yellow); }
+  .loading { text-align: center; padding: 60px; color: var(--muted); }
+  .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--green); color: white; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: transform 0.3s; z-index: 300; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">NMD <span>CRM</span></div>
+    <div class="login-sub">לוח בקרה פרסום דיגיטלי</div>
+    <input class="login-input" id="login-input" type="password" placeholder="סיסמה" onkeydown="if(event.key==='Enter') doLogin()" autofocus />
+    <button class="login-btn" onclick="doLogin()">כניסה</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<div class="header">
+  <div class="logo">NMD <span>CRM</span></div>
+  <div class="header-meta">
+    <span id="last-sync">טוען...</span>
+    <button class="sync-btn" onclick="init()">🔄 רענן</button>
+  </div>
+</div>
+
+<div class="tabs-wrapper">
+  <div class="tabs" id="tabs">
+    <button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>
+  </div>
+</div>
+
+<div class="main" id="main">
+  <div class="loading"><div class="spinner"></div><div>טוען נתונים...</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPA_URL = 'https://jjzvaqtqtfniuxjfyoyb.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqenZhcXRxdGZuaXV4amZ5b3liIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNTc0OTIsImV4cCI6MjA4ODYzMzQ5Mn0.ZwUnfYUPelnfvEcr_hlyh0ImiwXv__Cs2Y9V3Snl9c0';
+const PASSWORD = 'NMD123';
+const SESSION_KEY = 'nmd_auth';
+
+function cur(client) { return client.currency === 'ILS' ? '₪' : '$'; }
+
+function doLogin() {
+  const inp = document.getElementById('login-input');
+  const err = document.getElementById('login-error');
+  if (inp.value === PASSWORD) {
+    sessionStorage.setItem(SESSION_KEY, '1');
+    document.getElementById('login-screen').style.display = 'none';
+    init();
+  } else {
+    inp.classList.add('error');
+    err.textContent = 'סיסמה שגויה, נסה שוב';
+    inp.value = '';
+    setTimeout(() => { inp.classList.remove('error'); err.textContent = ''; }, 2000);
+  }
+}
+
+if (sessionStorage.getItem(SESSION_KEY) === '1') {
+  document.getElementById('login-screen').style.display = 'none';
+}
+
+async function supaFetch(path, params = '') {
+  const res = await fetch(`${SUPA_URL}/rest/v1/${path}${params}`, {
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' }
+  });
+  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+  return res.json();
+}
+
+let clients = [], insights = {}, campaigns = {};
+
+async function loadData() {
+  clients = await supaFetch('clients', '?is_active=eq.true&order=business_name');
+  const today = new Date().toISOString().split('T')[0];
+  const insightRows = await supaFetch('daily_insights', `?date=eq.${today}&select=client_id,platform,spend,leads,conversions,clicks`);
+  insights = {};
+  insightRows.forEach(r => {
+    if (!insights[r.client_id]) insights[r.client_id] = { spend: 0, leads: 0, clicks: 0 };
+    insights[r.client_id].spend  += parseFloat(r.spend || 0);
+    insights[r.client_id].leads  += parseInt(r.leads || 0) + parseInt(r.conversions || 0);
+    insights[r.client_id].clicks += parseInt(r.clicks || 0);
+  });
+  const campRows = await supaFetch('campaigns', `?select=id,client_id,campaign_name,platform,status,daily_budget`);
+  campaigns = {};
+  campRows.forEach(c => {
+    if (!campaigns[c.client_id]) campaigns[c.client_id] = [];
+    campaigns[c.client_id].push(c);
+  });
+  document.getElementById('last-sync').textContent = 'עודכן: ' + new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+}
+
+function showOverview() {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-overview').classList.add('active');
+  renderOverview();
+}
+
+function renderOverview() {
+  const main = document.getElementById('main');
+  if (!clients.length) { main.innerHTML = '<div class="empty">אין לקוחות במערכת</div>'; return; }
+  main.innerHTML = '<div class="overview-grid">' + clients.map(c => {
+    const ins = insights[c.id] || { spend: 0, leads: 0, clicks: 0 };
+    const budget = (c.monthly_budget_meta || 0) + (c.monthly_budget_google || 0);
+    const pct = budget > 0 ? Math.min(100, (ins.spend / budget * 100)).toFixed(0) : 0;
+    const barClass = pct > 90 ? 'danger' : pct > 70 ? 'warn' : '';
+    const sym = cur(c);
+    return `
+      <div class="client-card" onclick="showClient(${c.id})">
+        <div class="client-name">
+          <span>${c.business_name}</span>
+          <div class="platform-badges">
+            ${c.meta_ad_account_id ? '<span class="badge badge-meta">Meta</span>' : ''}
+            ${c.google_customer_id ? '<span class="badge badge-google">Google</span>' : ''}
+          </div>
+        </div>
+        <div class="client-stats">
+          <div class="stat-item"><div class="stat-label">הוצאה היום</div><div class="stat-value blue">${sym}${ins.spend.toFixed(0)}</div></div>
+          <div class="stat-item"><div class="stat-label">לידים היום</div><div class="stat-value green">${ins.leads}</div></div>
+          <div class="stat-item"><div class="stat-label">קמפיינים</div><div class="stat-value">${(campaigns[c.id] || []).length}</div></div>
+          <div class="stat-item"><div class="stat-label">CPL היום</div><div class="stat-value yellow">${ins.leads > 0 ? sym + (ins.spend / ins.leads).toFixed(0) : '-'}</div></div>
+        </div>
+        ${budget > 0 ? `<div class="budget-bar-wrap"><div class="budget-bar-label"><span>ניצול תקציב</span><span>${pct}%</span></div><div class="budget-bar"><div class="budget-bar-fill ${barClass}" style="width:${pct}%"></div></div></div>` : ''}
+      </div>`;
+  }).join('') + '</div>';
+}
+
+function showClient(clientId) {
+  const c = clients.find(x => x.id === clientId);
+  const ins = insights[clientId] || { spend: 0, leads: 0, clicks: 0 };
+  const camps = campaigns[clientId] || [];
+  const sym = cur(c);
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${clientId}`)?.classList.add('active');
+  const cpl = ins.leads > 0 ? sym + (ins.spend / ins.leads).toFixed(0) : '-';
+  const campRows = camps.map(camp => {
+    const sc = camp.status === 'ENABLED' || camp.status === 'ACTIVE' ? 'active' : 'paused';
+    const pb = camp.platform === 'facebook' ? '<span class="badge badge-meta">Meta</span>' : '<span class="badge badge-google">Google</span>';
+    return `<tr><td><span class="status-dot ${sc}"></span>${camp.campaign_name || '-'}</td><td>${pb}</td><td>${camp.status || '-'}</td><td>${camp.daily_budget ? sym + parseFloat(camp.daily_budget).toFixed(0) : '-'}</td></tr>`;
+  }).join('');
+  document.getElementById('main').innerHTML = `
+    <div class="client-header"><div class="client-title">${c.business_name}</div></div>
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="kpi-label">הוצאה היום</div><div class="kpi-val" style="color:var(--accent2)">${sym}${ins.spend.toFixed(0)}</div><div class="kpi-sub">כל הפלטפורמות</div></div>
+      <div class="kpi-card"><div class="kpi-label">לידים היום</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">Meta + Google</div></div>
+      <div class="kpi-card"><div class="kpi-label">עלות לליד</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">היום</div></div>
+      <div class="kpi-card"><div class="kpi-label">קליקים היום</div><div class="kpi-val">${ins.clicks}</div><div class="kpi-sub">כל הפלטפורמות</div></div>
+    </div>
+    <div class="section-title">קמפיינים פעילים</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>שם קמפיין</th><th>פלטפורמה</th><th>סטטוס</th><th>תקציב יומי</th></tr></thead>
+        <tbody>${campRows || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">אין קמפיינים</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+function buildTabs() {
+  document.getElementById('tabs').innerHTML =
+    `<button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>` +
+    clients.map(c => `<button class="tab" id="tab-${c.id}" onclick="showClient(${c.id})">${c.business_name}</button>`).join('');
+}
+
+async function init() {
+  document.getElementById('main').innerHTML = '<div class="loading"><div class="spinner"></div><div>טוען נתונים...</div></div>';
+  try {
+    await loadData();
+    buildTabs();
+    renderOverview();
+  } catch(e) {
+    document.getElementById('main').innerHTML = `<div class="empty">❌ שגיאת חיבור: ${e.message}</div>`;
+    console.error(e);
+  }
+}
+
+if (sessionStorage.getItem(SESSION_KEY) === '1') init();
+</script>
+</body>
+</html>
