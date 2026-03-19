@@ -69,8 +69,15 @@
   .budget-bar-fill { height: 100%; border-radius: 2px; background: var(--green); transition: width 0.5s ease; }
   .budget-bar-fill.warn { background: var(--yellow); }
   .budget-bar-fill.danger { background: var(--red); }
-  .client-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .client-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
   .client-title { font-size: 24px; font-weight: 800; }
+
+  /* ── DATE FILTER ── */
+  .date-filter { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .df-btn { padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); color: var(--muted2); font-family: 'Heebo', sans-serif; transition: all 0.15s; }
+  .df-btn:hover { color: var(--text); border-color: var(--accent); }
+  .df-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
   .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
   .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
   .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-weight: 500; }
@@ -134,6 +141,41 @@ const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const PASSWORD = 'NMD123';
 const SESSION_KEY = 'nmd_auth';
 
+// תאריכים
+function getDateRange(mode) {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const today = fmt(now);
+
+  if (mode === 'today') return { from: today, to: today, label: 'היום' };
+
+  if (mode === 'yesterday') {
+    const y = new Date(now); y.setDate(y.getDate() - 1);
+    const ys = fmt(y);
+    return { from: ys, to: ys, label: 'אתמול' };
+  }
+
+  if (mode === '7d') {
+    const d = new Date(now); d.setDate(d.getDate() - 6);
+    return { from: fmt(d), to: today, label: '7 ימים' };
+  }
+
+  if (mode === '30d') {
+    const d = new Date(now); d.setDate(d.getDate() - 29);
+    return { from: fmt(d), to: today, label: '30 ימים' };
+  }
+
+  if (mode === 'month') {
+    const from = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+    return { from, to: today, label: 'החודש' };
+  }
+
+  return { from: today, to: today, label: 'היום' };
+}
+
+let currentDateMode = 'today';
+
 function cur(client) { return client.currency === 'ILS' ? '₪' : '$'; }
 
 function doLogin() {
@@ -163,28 +205,41 @@ async function supaFetch(path, params = '') {
   return res.json();
 }
 
-let clients = [], insights = {}, campaigns = {};
+let clients = [], allInsights = [], campaigns = {};
 
 async function loadData() {
   clients = await supaFetch('clients', '?is_active=eq.true&order=business_name');
-  const today = new Date().toISOString().split('T')[0];
-  const insightRows = await supaFetch('daily_insights', `?date=eq.${today}&select=client_id,platform,spend,leads,conversions,clicks`);
-  insights = {};
-  insightRows.forEach(r => {
-    if (!insights[r.client_id]) insights[r.client_id] = { spend: 0, leads: 0, clicks: 0 };
-    insights[r.client_id].spend  += parseFloat(r.spend || 0);
-    insights[r.client_id].leads  += parseInt(r.leads || 0) + parseInt(r.conversions || 0);
-    insights[r.client_id].clicks += parseInt(r.clicks || 0);
-  });
+
+  // טען 30 ימים אחורה כדי שיהיה מוכן לכל הפילטרים
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const d30 = new Date(now); d30.setDate(d30.getDate() - 29);
+  const from = `${d30.getFullYear()}-${pad(d30.getMonth()+1)}-${pad(d30.getDate())}`;
+
+  allInsights = await supaFetch('daily_insights',
+    `?date=gte.${from}&select=client_id,platform,spend,leads,conversions,clicks,date`);
+
   const campRows = await supaFetch('campaigns', `?select=id,client_id,campaign_name,platform,status,daily_budget`);
   campaigns = {};
   campRows.forEach(c => {
     if (!campaigns[c.client_id]) campaigns[c.client_id] = [];
     campaigns[c.client_id].push(c);
   });
+
   document.getElementById('last-sync').textContent = 'עודכן: ' + new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
 }
 
+function getInsightsForRange(clientId, from, to) {
+  const rows = allInsights.filter(r => r.client_id === clientId && r.date >= from && r.date <= to);
+  return rows.reduce((acc, r) => {
+    acc.spend  += parseFloat(r.spend || 0);
+    acc.leads  += parseInt(r.leads || 0) + parseInt(r.conversions || 0);
+    acc.clicks += parseInt(r.clicks || 0);
+    return acc;
+  }, { spend: 0, leads: 0, clicks: 0 });
+}
+
+// ── OVERVIEW ─────────────────────────────────────────────────
 function showOverview() {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-overview').classList.add('active');
@@ -194,8 +249,9 @@ function showOverview() {
 function renderOverview() {
   const main = document.getElementById('main');
   if (!clients.length) { main.innerHTML = '<div class="empty">אין לקוחות במערכת</div>'; return; }
+  const { from, to } = getDateRange('today');
   main.innerHTML = '<div class="overview-grid">' + clients.map(c => {
-    const ins = insights[c.id] || { spend: 0, leads: 0, clicks: 0 };
+    const ins = getInsightsForRange(c.id, from, to);
     const budget = (c.monthly_budget_meta || 0) + (c.monthly_budget_google || 0);
     const pct = budget > 0 ? Math.min(100, (ins.spend / budget * 100)).toFixed(0) : 0;
     const barClass = pct > 90 ? 'danger' : pct > 70 ? 'warn' : '';
@@ -220,26 +276,42 @@ function renderOverview() {
   }).join('') + '</div>';
 }
 
-function showClient(clientId) {
+// ── CLIENT DETAIL ─────────────────────────────────────────────
+function showClient(clientId, dateMode) {
+  if (dateMode) currentDateMode = dateMode;
   const c = clients.find(x => x.id === clientId);
-  const ins = insights[clientId] || { spend: 0, leads: 0, clicks: 0 };
+  const { from, to, label } = getDateRange(currentDateMode);
+  const ins = getInsightsForRange(c.id, from, to);
   const camps = campaigns[clientId] || [];
   const sym = cur(c);
+
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(`tab-${clientId}`)?.classList.add('active');
+
   const cpl = ins.leads > 0 ? sym + (ins.spend / ins.leads).toFixed(0) : '-';
+
+  const dateButtons = [
+    { mode: 'today', label: 'היום' },
+    { mode: 'yesterday', label: 'אתמול' },
+    { mode: '7d', label: '7 ימים' },
+    { mode: '30d', label: '30 ימים' },
+    { mode: 'month', label: 'החודש' },
+  ].map(b => `<button class="df-btn ${currentDateMode === b.mode ? 'active' : ''}" onclick="showClient(${c.id}, '${b.mode}')">${b.label}</button>`).join('');
+
   const campRows = camps.map(camp => {
     const sc = camp.status === 'ENABLED' || camp.status === 'ACTIVE' ? 'active' : 'paused';
     const pb = camp.platform === 'facebook' ? '<span class="badge badge-meta">Meta</span>' : '<span class="badge badge-google">Google</span>';
     return `<tr><td><span class="status-dot ${sc}"></span>${camp.campaign_name || '-'}</td><td>${pb}</td><td>${camp.status || '-'}</td><td>${camp.daily_budget ? sym + parseFloat(camp.daily_budget).toFixed(0) : '-'}</td></tr>`;
   }).join('');
+
   document.getElementById('main').innerHTML = `
     <div class="client-header"><div class="client-title">${c.business_name}</div></div>
+    <div class="date-filter">${dateButtons}</div>
     <div class="kpi-grid">
-      <div class="kpi-card"><div class="kpi-label">הוצאה היום</div><div class="kpi-val" style="color:var(--accent2)">${sym}${ins.spend.toFixed(0)}</div><div class="kpi-sub">כל הפלטפורמות</div></div>
-      <div class="kpi-card"><div class="kpi-label">לידים היום</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">Meta + Google</div></div>
-      <div class="kpi-card"><div class="kpi-label">עלות לליד</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">היום</div></div>
-      <div class="kpi-card"><div class="kpi-label">קליקים היום</div><div class="kpi-val">${ins.clicks}</div><div class="kpi-sub">כל הפלטפורמות</div></div>
+      <div class="kpi-card"><div class="kpi-label">הוצאה</div><div class="kpi-val" style="color:var(--accent2)">${sym}${ins.spend.toFixed(0)}</div><div class="kpi-sub">${label}</div></div>
+      <div class="kpi-card"><div class="kpi-label">לידים</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
+      <div class="kpi-card"><div class="kpi-label">עלות לליד</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">${label}</div></div>
+      <div class="kpi-card"><div class="kpi-label">קליקים</div><div class="kpi-val">${ins.clicks}</div><div class="kpi-sub">${label}</div></div>
     </div>
     <div class="section-title">קמפיינים פעילים</div>
     <div class="table-wrap">
