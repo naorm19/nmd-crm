@@ -60,10 +60,11 @@
   .stat-value.blue { color:var(--accent2); }
   .budget-bar-wrap { margin-top:14px; }
   .budget-bar-label { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:6px; }
-  .budget-bar { height:4px; background:var(--surface3); border-radius:2px; overflow:hidden; }
+  .budget-bar { height:4px; background:var(--surface3); border-radius:2px; overflow:hidden; position:relative; }
   .budget-bar-fill { height:100%; border-radius:2px; background:var(--green); transition:width 0.5s ease; }
   .budget-bar-fill.warn { background:var(--yellow); }
   .budget-bar-fill.danger { background:var(--red); }
+  .budget-bar-pace { position:absolute; top:-2px; width:2px; height:8px; background:var(--muted2); border-radius:1px; }
 
   .client-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
   .client-title { font-size:24px; font-weight:800; }
@@ -79,14 +80,33 @@
   .kpi-val { font-size:28px; font-weight:800; line-height:1; margin-bottom:4px; }
   .kpi-sub { font-size:11px; color:var(--muted); }
 
-  /* ── BUDGET CARDS ── */
-  .budget-cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+  /* ── BUDGET SECTION ── */
+  .budget-section { margin-bottom:24px; }
+  .budget-total-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; }
+  .budget-total-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .budget-total-title { font-size:14px; font-weight:700; color:var(--muted2); text-transform:uppercase; letter-spacing:0.5px; }
+  .budget-total-amount { font-size:32px; font-weight:800; }
+  .budget-total-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .budget-pace-info { font-size:12px; color:var(--muted); }
+  .budget-pace-info span { font-weight:700; }
+  .budget-status-badge { font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; }
+  .budget-status-badge.ok { background:rgba(16,185,129,0.15); color:var(--green); }
+  .budget-status-badge.warn { background:rgba(245,158,11,0.15); color:var(--yellow); }
+  .budget-status-badge.over { background:rgba(239,68,68,0.15); color:var(--red); }
+  .budget-status-badge.under { background:rgba(100,116,139,0.15); color:var(--muted2); }
+
+  .budget-bar-thick { height:10px; background:var(--surface3); border-radius:5px; overflow:visible; position:relative; margin-top:8px; }
+  .budget-bar-thick-fill { height:100%; border-radius:5px; transition:width 0.5s ease; }
+  .budget-bar-thick-pace { position:absolute; top:-4px; width:3px; height:18px; background:white; border-radius:2px; opacity:0.6; }
+
+  .budget-cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
   .budget-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; }
   .budget-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
   .budget-card-title { font-size:13px; font-weight:700; color:var(--muted2); }
   .edit-btn { background:transparent; border:1px solid var(--border); color:var(--muted2); padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer; font-family:'Heebo',sans-serif; transition:all 0.15s; }
   .edit-btn:hover { border-color:var(--accent); color:var(--accent); }
-  .budget-amount { font-size:24px; font-weight:800; color:var(--text); margin-bottom:8px; }
+  .budget-amount { font-size:22px; font-weight:800; margin-bottom:4px; }
+  .budget-spent { font-size:12px; color:var(--muted); margin-bottom:8px; }
   .budget-edit-row { display:flex; gap:8px; margin-top:8px; }
   .budget-input { flex:1; background:var(--surface2); border:1px solid var(--accent); border-radius:6px; padding:8px 12px; color:var(--text); font-size:14px; font-family:'Heebo',sans-serif; outline:none; }
   .save-btn { background:var(--accent); color:white; border:none; padding:8px 14px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Heebo',sans-serif; }
@@ -153,17 +173,45 @@ const SESSION_KEY = 'nmd_auth';
 
 function cur(client) { return client.currency === 'ILS' ? '₪' : '$'; }
 
+// חישוב קצב התקדמות ביחס לחודש
+function getMonthPace() {
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  const dayOfMonth = now.getDate();
+  return dayOfMonth / daysInMonth; // 0-1
+}
+
+function getBudgetStatus(spent, budget) {
+  if (!budget) return null;
+  const pace = getMonthPace();
+  const utilPct = spent / budget;
+  const diff = utilPct - pace;
+  if (diff > 0.1)  return { label:'חריגה', cls:'over' };
+  if (diff > 0.05) return { label:'מעל קצב', cls:'warn' };
+  if (diff < -0.1) return { label:'מתחת לקצב', cls:'under' };
+  return { label:'בקצב', cls:'ok' };
+}
+
 function getDateRange(mode) {
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
   const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
   const today = fmt(now);
-  if (mode === 'today')     return { from:today, to:today, label:'היום' };
-  if (mode === 'yesterday') { const y=new Date(now); y.setDate(y.getDate()-1); const ys=fmt(y); return { from:ys, to:ys, label:'אתמול' }; }
-  if (mode === '7d')        { const d=new Date(now); d.setDate(d.getDate()-6); return { from:fmt(d), to:today, label:'7 ימים' }; }
-  if (mode === '30d')       { const d=new Date(now); d.setDate(d.getDate()-29); return { from:fmt(d), to:today, label:'30 ימים' }; }
-  if (mode === 'month')     { const from=`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`; return { from, to:today, label:'החודש' }; }
+  if (mode==='today')     return { from:today, to:today, label:'היום' };
+  if (mode==='yesterday') { const y=new Date(now); y.setDate(y.getDate()-1); const ys=fmt(y); return { from:ys, to:ys, label:'אתמול' }; }
+  if (mode==='7d')        { const d=new Date(now); d.setDate(d.getDate()-6); return { from:fmt(d), to:today, label:'7 ימים' }; }
+  if (mode==='30d')       { const d=new Date(now); d.setDate(d.getDate()-29); return { from:fmt(d), to:today, label:'30 ימים' }; }
+  if (mode==='month')     { const from=`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`; return { from, to:today, label:'החודש' }; }
   return { from:today, to:today, label:'היום' };
+}
+
+// חישוב הוצאה מתחילת החודש (לתקציב)
+function getMonthSpend(clientId, platform=null) {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const from = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+  const to   = now.toISOString().split('T')[0];
+  return getInsightsForRange(clientId, from, to, platform).spend;
 }
 
 let currentDateMode = 'today';
@@ -195,11 +243,11 @@ async function supaFetch(path, params='') {
 
 async function supaPatch(path, params='', body={}) {
   const res = await fetch(`${SUPA_URL}/rest/v1/${path}${params}`, {
-    method: 'PATCH',
+    method:'PATCH',
     headers: { 'apikey':SUPA_KEY, 'Authorization':`Bearer ${SUPA_KEY}`, 'Content-Type':'application/json', 'Prefer':'return=representation' },
     body: JSON.stringify(body)
   });
-  if (!res.ok) throw new Error(`Supabase patch error: ${res.status}`);
+  if (!res.ok) throw new Error(`Patch error: ${res.status}`);
   return res.json();
 }
 
@@ -223,13 +271,35 @@ async function loadData() {
 
 function getInsightsForRange(clientId, from, to, platform=null) {
   return allInsights
-    .filter(r => r.client_id===clientId && r.date>=from && r.date<=to && (!platform || r.platform===platform))
+    .filter(r => r.client_id===clientId && r.date>=from && r.date<=to && (!platform||r.platform===platform))
     .reduce((acc,r) => {
       acc.spend  += parseFloat(r.spend||0);
       acc.leads  += parseInt(r.leads||0) + parseInt(r.conversions||0);
       acc.clicks += parseInt(r.clicks||0);
       return acc;
     }, { spend:0, leads:0, clicks:0 });
+}
+
+function budgetBarHtml(spent, budget, thick=false) {
+  if (!budget) return '';
+  const pace     = getMonthPace();
+  const utilPct  = Math.min(100, (spent/budget*100));
+  const pacePct  = Math.min(100, pace*100);
+  const status   = getBudgetStatus(spent, budget);
+  const fillColor = status?.cls==='over'?'var(--red)':status?.cls==='warn'?'var(--yellow)':status?.cls==='under'?'var(--muted)':'var(--green)';
+
+  if (thick) {
+    return `
+      <div class="budget-bar-thick">
+        <div class="budget-bar-thick-fill" style="width:${utilPct}%;background:${fillColor}"></div>
+        <div class="budget-bar-thick-pace" style="right:${100-pacePct}%"></div>
+      </div>`;
+  }
+  return `
+    <div class="budget-bar">
+      <div class="budget-bar-fill" style="width:${utilPct}%;background:${fillColor}"></div>
+      <div class="budget-bar-pace" style="right:${100-pacePct}%"></div>
+    </div>`;
 }
 
 // ── OVERVIEW ─────────────────────────────────────────────────
@@ -244,11 +314,12 @@ function renderOverview() {
   if (!clients.length) { main.innerHTML = '<div class="empty">אין לקוחות במערכת</div>'; return; }
   const { from, to } = getDateRange('today');
   main.innerHTML = '<div class="overview-grid">' + clients.map(c => {
-    const ins = getInsightsForRange(c.id, from, to);
+    const ins    = getInsightsForRange(c.id, from, to);
     const budget = (c.monthly_budget_meta||0) + (c.monthly_budget_google||0);
-    const pct = budget>0 ? Math.min(100,(ins.spend/budget*100)).toFixed(0) : 0;
-    const barClass = pct>90?'danger':pct>70?'warn':'';
-    const sym = cur(c);
+    const mtdSpend = getMonthSpend(c.id);
+    const pct    = budget>0 ? Math.min(100,(mtdSpend/budget*100)).toFixed(0) : 0;
+    const status = getBudgetStatus(mtdSpend, budget);
+    const sym    = cur(c);
     return `
       <div class="client-card" onclick="showClient(${c.id})">
         <div class="client-name">
@@ -264,7 +335,14 @@ function renderOverview() {
           <div class="stat-item"><div class="stat-label">קמפיינים</div><div class="stat-value">${(campaigns[c.id]||[]).length}</div></div>
           <div class="stat-item"><div class="stat-label">CPL היום</div><div class="stat-value yellow">${ins.leads>0?sym+(ins.spend/ins.leads).toFixed(0):'-'}</div></div>
         </div>
-        ${budget>0?`<div class="budget-bar-wrap"><div class="budget-bar-label"><span>ניצול תקציב</span><span>${pct}%</span></div><div class="budget-bar"><div class="budget-bar-fill ${barClass}" style="width:${pct}%"></div></div></div>`:''}
+        ${budget>0?`
+        <div class="budget-bar-wrap">
+          <div class="budget-bar-label">
+            <span>תקציב חודשי ${pct}%</span>
+            ${status?`<span class="budget-status-badge ${status.cls}">${status.label}</span>`:''}
+          </div>
+          ${budgetBarHtml(mtdSpend, budget)}
+        </div>`:''}
       </div>`;
   }).join('') + '</div>';
 }
@@ -277,10 +355,23 @@ function showClient(clientId, dateMode) {
   const { from, to, label } = getDateRange(currentDateMode);
   const sym = cur(c);
 
-  // Combined KPIs
-  const ins     = getInsightsForRange(c.id, from, to);
-  const insMeta = getInsightsForRange(c.id, from, to, 'facebook');
+  const ins       = getInsightsForRange(c.id, from, to);
+  const insMeta   = getInsightsForRange(c.id, from, to, 'facebook');
   const insGoogle = getInsightsForRange(c.id, from, to, 'google');
+
+  // הוצאה מתחילת חודש לחישוב תקציב
+  const mtdMeta   = getMonthSpend(c.id, 'facebook');
+  const mtdGoogle = getMonthSpend(c.id, 'google');
+  const mtdTotal  = mtdMeta + mtdGoogle;
+
+  const budgetMeta   = c.monthly_budget_meta   || 0;
+  const budgetGoogle = c.monthly_budget_google  || 0;
+  const budgetTotal  = budgetMeta + budgetGoogle;
+
+  const pace       = getMonthPace();
+  const statusMeta   = getBudgetStatus(mtdMeta, budgetMeta);
+  const statusGoogle = getBudgetStatus(mtdGoogle, budgetGoogle);
+  const statusTotal  = getBudgetStatus(mtdTotal, budgetTotal);
 
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(`tab-${clientId}`)?.classList.add('active');
@@ -292,57 +383,75 @@ function showClient(clientId, dateMode) {
     {mode:'7d',label:'7 ימים'},{mode:'30d',label:'30 ימים'},{mode:'month',label:'החודש'}
   ].map(b => `<button class="df-btn ${currentDateMode===b.mode?'active':''}" onclick="showClient(${c.id},'${b.mode}')">${b.label}</button>`).join('');
 
-  // Budget cards
-  const budgetMeta   = c.monthly_budget_meta   || 0;
-  const budgetGoogle = c.monthly_budget_google  || 0;
+  const paceDay = Math.round(pace * new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate());
 
-  const budgetSection = `
+  // כרטיס סה"כ
+  const totalCard = budgetTotal > 0 ? `
+    <div class="budget-total-card">
+      <div class="budget-total-header">
+        <div class="budget-total-title">💰 סה"כ תקציב חודשי</div>
+        ${statusTotal?`<span class="budget-status-badge ${statusTotal.cls}">${statusTotal.label}</span>`:''}
+      </div>
+      <div class="budget-total-row">
+        <div>
+          <div class="budget-total-amount">${sym}${mtdTotal.toFixed(0)} <span style="font-size:16px;color:var(--muted)">/ ${sym}${budgetTotal.toLocaleString()}</span></div>
+          <div class="budget-pace-info" style="margin-top:4px">
+            יום ${paceDay} בחודש - אמורים להיות על <span>${(pace*100).toFixed(0)}%</span> | בפועל: <span>${budgetTotal>0?(mtdTotal/budgetTotal*100).toFixed(0):0}%</span>
+          </div>
+        </div>
+      </div>
+      ${budgetBarHtml(mtdTotal, budgetTotal, true)}
+    </div>` : '';
+
+  // כרטיסי Meta + Google
+  const subCards = `
     <div class="budget-cards">
       ${c.meta_ad_account_id ? `
       <div class="budget-card">
         <div class="budget-card-header">
-          <div class="budget-card-title">📘 תקציב חודשי Meta</div>
-          <button class="edit-btn" onclick="toggleBudgetEdit('meta',${c.id},'${sym}')">✏️ עריכה</button>
-        </div>
-        <div class="budget-amount" id="budget-meta-val">${sym}${budgetMeta.toLocaleString()}</div>
-        <div id="budget-meta-edit" style="display:none">
-          <div class="budget-edit-row">
-            <input class="budget-input" id="budget-meta-input" type="number" placeholder="הכנס תקציב" value="${budgetMeta}" />
-            <button class="save-btn" onclick="saveBudget('meta',${c.id},'${sym}')">שמור</button>
+          <div class="budget-card-title">📘 Meta</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            ${statusMeta?`<span class="budget-status-badge ${statusMeta.cls}">${statusMeta.label}</span>`:''}
+            <button class="edit-btn" onclick="toggleBudgetEdit('meta',${c.id})">✏️</button>
           </div>
         </div>
-        ${budgetMeta>0?`<div style="margin-top:10px">
-          <div class="budget-bar-label"><span>ניצול</span><span>${Math.min(100,(insMeta.spend/budgetMeta*100)).toFixed(0)}%</span></div>
-          <div class="budget-bar"><div class="budget-bar-fill ${insMeta.spend/budgetMeta>0.9?'danger':insMeta.spend/budgetMeta>0.7?'warn':''}" style="width:${Math.min(100,(insMeta.spend/budgetMeta*100)).toFixed(0)}%"></div></div>
-        </div>`:''}
+        <div class="budget-amount" id="budget-meta-val">${sym}${budgetMeta.toLocaleString()}</div>
+        <div class="budget-spent">הוצא החודש: ${sym}${mtdMeta.toFixed(0)} (${budgetMeta>0?(mtdMeta/budgetMeta*100).toFixed(0):0}%)</div>
+        ${budgetBarHtml(mtdMeta, budgetMeta)}
+        <div id="budget-meta-edit" style="display:none;margin-top:10px">
+          <div class="budget-edit-row">
+            <input class="budget-input" id="budget-meta-input" type="number" placeholder="תקציב חודשי" value="${budgetMeta}" />
+            <button class="save-btn" onclick="saveBudget('meta',${c.id})">שמור</button>
+          </div>
+        </div>
       </div>` : ''}
       ${c.google_customer_id ? `
       <div class="budget-card">
         <div class="budget-card-header">
-          <div class="budget-card-title">🔴 תקציב חודשי Google</div>
-          <button class="edit-btn" onclick="toggleBudgetEdit('google',${c.id},'${sym}')">✏️ עריכה</button>
-        </div>
-        <div class="budget-amount" id="budget-google-val">${sym}${budgetGoogle.toLocaleString()}</div>
-        <div id="budget-google-edit" style="display:none">
-          <div class="budget-edit-row">
-            <input class="budget-input" id="budget-google-input" type="number" placeholder="הכנס תקציב" value="${budgetGoogle}" />
-            <button class="save-btn" onclick="saveBudget('google',${c.id},'${sym}')">שמור</button>
+          <div class="budget-card-title">🔴 Google</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            ${statusGoogle?`<span class="budget-status-badge ${statusGoogle.cls}">${statusGoogle.label}</span>`:''}
+            <button class="edit-btn" onclick="toggleBudgetEdit('google',${c.id})">✏️</button>
           </div>
         </div>
-        ${budgetGoogle>0?`<div style="margin-top:10px">
-          <div class="budget-bar-label"><span>ניצול</span><span>${Math.min(100,(insGoogle.spend/budgetGoogle*100)).toFixed(0)}%</span></div>
-          <div class="budget-bar"><div class="budget-bar-fill ${insGoogle.spend/budgetGoogle>0.9?'danger':insGoogle.spend/budgetGoogle>0.7?'warn':''}" style="width:${Math.min(100,(insGoogle.spend/budgetGoogle*100)).toFixed(0)}%"></div></div>
-        </div>`:''}
+        <div class="budget-amount" id="budget-google-val">${sym}${budgetGoogle.toLocaleString()}</div>
+        <div class="budget-spent">הוצא החודש: ${sym}${mtdGoogle.toFixed(0)} (${budgetGoogle>0?(mtdGoogle/budgetGoogle*100).toFixed(0):0}%)</div>
+        ${budgetBarHtml(mtdGoogle, budgetGoogle)}
+        <div id="budget-google-edit" style="display:none;margin-top:10px">
+          <div class="budget-edit-row">
+            <input class="budget-input" id="budget-google-input" type="number" placeholder="תקציב חודשי" value="${budgetGoogle}" />
+            <button class="save-btn" onclick="saveBudget('google',${c.id})">שמור</button>
+          </div>
+        </div>
       </div>` : ''}
     </div>`;
 
-  // Camp tables
   const camps = campaigns[clientId] || [];
-  const metaCamps   = camps.filter(x => x.platform === 'facebook');
-  const googleCamps = camps.filter(x => x.platform === 'google');
+  const metaCamps   = camps.filter(x => x.platform==='facebook');
+  const googleCamps = camps.filter(x => x.platform==='google');
 
-  const campTable = (list) => {
-    if (!list.length) return '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">אין קמפיינים</td></tr>';
+  const campTable = list => {
+    if (!list.length) return '<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:24px">אין קמפיינים</td></tr>';
     return list.map(camp => {
       const sc = camp.status==='ENABLED'||camp.status==='ACTIVE'?'active':'paused';
       return `<tr><td><span class="status-dot ${sc}"></span>${camp.campaign_name||'-'}</td><td>${camp.status||'-'}</td><td>${camp.daily_budget?sym+parseFloat(camp.daily_budget).toFixed(0):'-'}</td></tr>`;
@@ -352,57 +461,41 @@ function showClient(clientId, dateMode) {
   document.getElementById('main').innerHTML = `
     <div class="client-header"><div class="client-title">${c.business_name}</div></div>
     <div class="date-filter">${dateButtons}</div>
-
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">הוצאה כוללת</div><div class="kpi-val" style="color:var(--accent2)">${sym}${ins.spend.toFixed(0)}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">לידים</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">עלות לליד</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">קליקים</div><div class="kpi-val">${ins.clicks}</div><div class="kpi-sub">${label}</div></div>
     </div>
-
-    ${budgetSection}
-
-    ${metaCamps.length ? `
-    <div class="section-title">📘 קמפיינים Meta</div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב יומי</th></tr></thead>
-      <tbody>${campTable(metaCamps)}</tbody>
-    </table></div>` : ''}
-
-    ${googleCamps.length ? `
-    <div class="section-title">🔴 קמפיינים Google</div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב יומי</th></tr></thead>
-      <tbody>${campTable(googleCamps)}</tbody>
-    </table></div>` : ''}
+    <div class="budget-section">
+      ${totalCard}
+      ${subCards}
+    </div>
+    ${metaCamps.length?`<div class="section-title">📘 קמפיינים Meta</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב יומי</th></tr></thead><tbody>${campTable(metaCamps)}</tbody></table></div>`:''}
+    ${googleCamps.length?`<div class="section-title">🔴 קמפיינים Google</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב יומי</th></tr></thead><tbody>${campTable(googleCamps)}</tbody></table></div>`:''}
   `;
 }
 
-// ── BUDGET EDIT ───────────────────────────────────────────────
-function toggleBudgetEdit(platform, clientId, sym) {
-  const editDiv = document.getElementById(`budget-${platform}-edit`);
-  editDiv.style.display = editDiv.style.display === 'none' ? 'block' : 'none';
+function toggleBudgetEdit(platform) {
+  const el = document.getElementById(`budget-${platform}-edit`);
+  el.style.display = el.style.display==='none' ? 'block' : 'none';
 }
 
-async function saveBudget(platform, clientId, sym) {
+async function saveBudget(platform, clientId) {
   const val = parseFloat(document.getElementById(`budget-${platform}-input`).value);
-  if (isNaN(val) || val < 0) { showToast('סכום לא תקין', 'red'); return; }
-
-  const field = platform === 'meta' ? 'monthly_budget_meta' : 'monthly_budget_google';
+  if (isNaN(val)||val<0) { showToast('סכום לא תקין','red'); return; }
+  const field = platform==='meta' ? 'monthly_budget_meta' : 'monthly_budget_google';
   try {
     await supaPatch('clients', `?id=eq.${clientId}`, { [field]: val });
-    // Update local data
-    const c = clients.find(x => x.id === clientId);
+    const c = clients.find(x => x.id===clientId);
     c[field] = val;
-    document.getElementById(`budget-${platform}-val`).textContent = sym + val.toLocaleString();
-    document.getElementById(`budget-${platform}-edit`).style.display = 'none';
-    showToast('✅ תקציב עודכן בהצלחה');
+    showToast('✅ תקציב עודכן!');
+    showClient(clientId);
   } catch(e) {
-    showToast('❌ שגיאה בשמירה', 'red');
+    showToast('❌ שגיאה בשמירה','red');
   }
 }
 
-// ── TABS ─────────────────────────────────────────────────────
 function buildTabs() {
   document.getElementById('tabs').innerHTML =
     `<button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>` +
@@ -412,7 +505,7 @@ function buildTabs() {
 function showToast(msg, color='green') {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.style.background = color==='red' ? 'var(--red)' : 'var(--green)';
+  t.style.background = color==='red'?'var(--red)':'var(--green)';
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 3000);
 }
