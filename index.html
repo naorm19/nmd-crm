@@ -503,7 +503,7 @@ function showClient(clientId, dateMode) {
   renderChart(c, from, to, sym); if (c.business_name === 'The Ductors') renderLeaderTable(c, sym);
 }
 async function renderLeaderTable(c, sym) {
-  const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1HLb0zAS_1OcO55z0RE_FdxCRP_NKFUmw27U3oheqIJw/pub?gid=699410654&single=true&output=csv';
+  const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT0ItiZNLkWNI3pLY9URnnnzKs880m2o5T3SYIfhbt23iL2ln0T627u8hkyU1wO4CQIRUQ32oyWSbcz/pub?gid=699410654&single=true&output=csv';
   
   try {
     const res  = await fetch(SHEET_URL);
