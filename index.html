@@ -15,7 +15,6 @@
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:'Heebo',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; direction:rtl; }
-
   #login-screen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:999; }
   .login-box { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:40px 36px; width:360px; max-width:90vw; text-align:center; }
   .login-logo { font-size:22px; font-weight:800; margin-bottom:8px; }
@@ -27,22 +26,18 @@
   .login-btn { width:100%; background:var(--accent); color:white; border:none; padding:12px; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; font-family:'Heebo',sans-serif; transition:opacity 0.2s; }
   .login-btn:hover { opacity:0.85; }
   .login-error { font-size:12px; color:var(--red); margin-top:10px; min-height:18px; }
-
   .header { background:var(--surface); border-bottom:1px solid var(--border); padding:0 24px; display:flex; align-items:center; justify-content:space-between; height:60px; position:sticky; top:0; z-index:100; }
   .logo { font-size:18px; font-weight:800; letter-spacing:-0.5px; }
   .logo span { color:var(--accent); }
   .header-meta { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:16px; }
   .sync-btn { background:var(--surface2); color:var(--muted2); border:1px solid var(--border); padding:6px 14px; border-radius:6px; font-size:12px; font-family:'Heebo',sans-serif; cursor:pointer; font-weight:600; transition:opacity 0.2s; }
   .sync-btn:hover { opacity:0.85; }
-
   .tabs-wrapper { background:var(--surface); border-bottom:1px solid var(--border); padding:0 24px; overflow-x:auto; white-space:nowrap; }
   .tabs { display:inline-flex; gap:4px; padding:8px 0; }
   .tab { padding:7px 16px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; border:1px solid transparent; transition:all 0.15s; color:var(--muted2); background:transparent; font-family:'Heebo',sans-serif; white-space:nowrap; }
   .tab:hover { background:var(--surface2); color:var(--text); }
   .tab.active { background:var(--accent); color:white; border-color:var(--accent); }
-
   .main { padding:24px; max-width:1400px; margin:0 auto; }
-
   .overview-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
   .client-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; cursor:pointer; transition:all 0.2s; position:relative; overflow:hidden; }
   .client-card::before { content:''; position:absolute; top:0; right:0; width:3px; height:100%; background:var(--accent); opacity:0; transition:opacity 0.2s; }
@@ -64,21 +59,17 @@
   .budget-bar { height:4px; background:var(--surface3); border-radius:2px; overflow:visible; position:relative; }
   .budget-bar-fill { height:100%; border-radius:2px; transition:width 0.5s ease; }
   .budget-bar-pace { position:absolute; top:-2px; width:2px; height:8px; background:var(--muted2); border-radius:1px; }
-
   .client-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
   .client-title { font-size:24px; font-weight:800; }
-
   .date-filter { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:24px; }
   .df-btn { padding:7px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid var(--border); background:var(--surface2); color:var(--muted2); font-family:'Heebo',sans-serif; transition:all 0.15s; }
   .df-btn:hover { color:var(--text); border-color:var(--accent); }
   .df-btn.active { background:var(--accent); color:white; border-color:var(--accent); }
-
   .kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
   .kpi-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; }
   .kpi-label { font-size:12px; color:var(--muted); margin-bottom:8px; font-weight:500; }
   .kpi-val { font-size:28px; font-weight:800; line-height:1; margin-bottom:4px; }
   .kpi-sub { font-size:11px; color:var(--muted); }
-
   .budget-section { margin-bottom:24px; }
   .budget-total-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; }
   .budget-total-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
@@ -95,7 +86,6 @@
   .budget-bar-thick { height:10px; background:var(--surface3); border-radius:5px; overflow:visible; position:relative; margin-top:8px; }
   .budget-bar-thick-fill { height:100%; border-radius:5px; transition:width 0.5s ease; }
   .budget-bar-thick-pace { position:absolute; top:-4px; width:3px; height:18px; background:white; border-radius:2px; opacity:0.6; }
-
   .budget-cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
   .budget-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; }
   .budget-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
@@ -108,12 +98,9 @@
   .budget-input { flex:1; background:var(--surface2); border:1px solid var(--accent); border-radius:6px; padding:8px 12px; color:var(--text); font-size:14px; font-family:'Heebo',sans-serif; outline:none; }
   .save-btn { background:var(--accent); color:white; border:none; padding:8px 14px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Heebo',sans-serif; }
   .save-btn:hover { opacity:0.85; }
-
-  /* ── CHART ── */
   .chart-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:24px; }
   .chart-title { font-size:14px; font-weight:700; color:var(--muted2); margin-bottom:16px; text-transform:uppercase; letter-spacing:0.5px; }
   .chart-wrap { position:relative; height:280px; }
-
   .section-title { font-size:14px; font-weight:700; color:var(--muted2); margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px; }
   .table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-bottom:24px; }
   table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -126,11 +113,9 @@
   .status-dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin-left:8px; }
   .status-dot.active { background:var(--green); }
   .status-dot.paused { background:var(--yellow); }
-
   .camp-budget-input { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:5px 10px; color:var(--text); font-size:13px; font-family:'Heebo',sans-serif; outline:none; width:100px; transition:border-color 0.2s; }
   .camp-budget-input:focus { border-color:var(--accent); }
   .camp-save-btn { background:var(--accent); color:white; border:none; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; font-family:'Heebo',sans-serif; margin-right:4px; }
-
   .loading { text-align:center; padding:60px; color:var(--muted); }
   .spinner { width:32px; height:32px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto 16px; }
   @keyframes spin { to { transform:rotate(360deg); } }
@@ -176,26 +161,18 @@ const SUPA_URL = 'https://jjzvaqtqtfniuxjfyoyb.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqenZhcXRxdGZuaXV4amZ5b3liIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNTc0OTIsImV4cCI6MjA4ODYzMzQ5Mn0.ZwUnfYUPelnfvEcr_hlyh0ImiwXv__Cs2Y9V3Snl9c0';
 const PASSWORD = 'NMD123';
 const SESSION_KEY = 'nmd_auth';
-
 let chartInstance = null;
-
-function fmt(n, sym='') {
-  if (n === null || n === undefined) return '-';
-  return sym + Math.round(n).toLocaleString('he-IL');
-}
 
 function cur(client) { return client.currency === 'ILS' ? '₪' : '$'; }
 
 function getMonthPace() {
   const now = new Date();
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
-  return now.getDate() / daysInMonth;
+  return now.getDate() / new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
 }
 
 function getBudgetStatus(spent, budget) {
   if (!budget) return null;
-  const pace = getMonthPace();
-  const diff = (spent/budget) - pace;
+  const diff = (spent/budget) - getMonthPace();
   if (diff > 0.1)  return { label:'חריגה', cls:'over' };
   if (diff > 0.05) return { label:'מעל קצב', cls:'warn' };
   if (diff < -0.1) return { label:'מתחת לקצב', cls:'under' };
@@ -205,22 +182,23 @@ function getBudgetStatus(spent, budget) {
 function getDateRange(mode) {
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
-  const fmt2 = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-  const today = fmt2(now);
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const today = fmt(now);
   if (mode==='today')     return { from:today, to:today, label:'היום' };
-  if (mode==='yesterday') { const y=new Date(now); y.setDate(y.getDate()-1); const ys=fmt2(y); return { from:ys, to:ys, label:'אתמול' }; }
-  if (mode==='7d')        { const d=new Date(now); d.setDate(d.getDate()-6); return { from:fmt2(d), to:today, label:'7 ימים' }; }
-  if (mode==='30d')       { const d=new Date(now); d.setDate(d.getDate()-29); return { from:fmt2(d), to:today, label:'30 ימים' }; }
+  if (mode==='yesterday') { const y=new Date(now); y.setDate(y.getDate()-1); const s=fmt(y); return { from:s, to:s, label:'אתמול' }; }
+  if (mode==='7d')        { const d=new Date(now); d.setDate(d.getDate()-6); return { from:fmt(d), to:today, label:'7 ימים' }; }
+  if (mode==='30d')       { const d=new Date(now); d.setDate(d.getDate()-29); return { from:fmt(d), to:today, label:'30 ימים' }; }
   if (mode==='month')     { return { from:`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`, to:today, label:'החודש' }; }
   return { from:today, to:today, label:'היום' };
 }
 
-function getMonthSpend(clientId, platform=null) {
+function getMonthRange() {
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
-  const from = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
-  const to   = now.toISOString().split('T')[0];
-  return getInsightsForRange(clientId, from, to, platform).spend;
+  return {
+    from: `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`,
+    to:   now.toISOString().split('T')[0]
+  };
 }
 
 let currentDateMode = 'today';
@@ -268,7 +246,7 @@ async function loadData() {
   const pad = n => String(n).padStart(2,'0');
   const d30 = new Date(now); d30.setDate(d30.getDate()-29);
   const from = `${d30.getFullYear()}-${pad(d30.getMonth()+1)}-${pad(d30.getDate())}`;
-  allInsights = await supaFetch('daily_insights', `?date=gte.${from}&select=client_id,platform,spend,leads,conversions,clicks,date`);
+  allInsights = await supaFetch('daily_insights', `?date=gte.${from}&select=client_id,campaign_id,platform,spend,leads,conversions,clicks,date`);
   const campRows = await supaFetch('campaigns', `?select=id,client_id,campaign_name,platform,status,daily_budget,monthly_budget`);
   campaigns = {};
   campRows.forEach(c => {
@@ -289,10 +267,17 @@ function getInsightsForRange(clientId, from, to, platform=null) {
     }, { spend:0, leads:0, clicks:0 });
 }
 
-function getInsightsByDay(clientId, from, to, platform=null) {
+function getCampMonthSpend(campId) {
+  const { from, to } = getMonthRange();
+  return allInsights
+    .filter(r => r.campaign_id===campId && r.date>=from && r.date<=to)
+    .reduce((s,r) => s + parseFloat(r.spend||0), 0);
+}
+
+function getInsightsByDay(clientId, from, to) {
   const map = {};
   allInsights
-    .filter(r => r.client_id===clientId && r.date>=from && r.date<=to && (!platform||r.platform===platform))
+    .filter(r => r.client_id===clientId && r.date>=from && r.date<=to)
     .forEach(r => {
       if (!map[r.date]) map[r.date] = { spend:0, leads:0, clicks:0 };
       map[r.date].spend  += parseFloat(r.spend||0);
@@ -300,6 +285,11 @@ function getInsightsByDay(clientId, from, to, platform=null) {
       map[r.date].clicks += parseInt(r.clicks||0);
     });
   return map;
+}
+
+function getMonthSpend(clientId, platform=null) {
+  const { from, to } = getMonthRange();
+  return getInsightsForRange(clientId, from, to, platform).spend;
 }
 
 function budgetBarHtml(spent, budget, thick=false) {
@@ -321,7 +311,6 @@ function budgetBarHtml(spent, budget, thick=false) {
     </div>`;
 }
 
-// ── OVERVIEW ─────────────────────────────────────────────────
 function showOverview() {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-overview').classList.add('active');
@@ -334,11 +323,11 @@ function renderOverview() {
   if (!clients.length) { main.innerHTML = '<div class="empty">אין לקוחות במערכת</div>'; return; }
   const { from, to } = getDateRange('today');
   main.innerHTML = '<div class="overview-grid">' + clients.map(c => {
-    const ins    = getInsightsForRange(c.id, from, to);
-    const budget = (c.monthly_budget_meta||0) + (c.monthly_budget_google||0);
+    const ins      = getInsightsForRange(c.id, from, to);
+    const budget   = (c.monthly_budget_meta||0) + (c.monthly_budget_google||0);
     const mtdSpend = getMonthSpend(c.id);
-    const status = getBudgetStatus(mtdSpend, budget);
-    const sym    = cur(c);
+    const status   = getBudgetStatus(mtdSpend, budget);
+    const sym      = cur(c);
     return `
       <div class="client-card" onclick="showClient(${c.id})">
         <div class="client-name">
@@ -357,7 +346,7 @@ function renderOverview() {
         ${budget>0?`
         <div class="budget-bar-wrap">
           <div class="budget-bar-label">
-            <span>תקציב חודשי ${budget>0?(mtdSpend/budget*100).toFixed(0):0}%</span>
+            <span>תקציב חודשי ${(mtdSpend/budget*100).toFixed(0)}%</span>
             ${status?`<span class="budget-status-badge ${status.cls}">${status.label}</span>`:''}
           </div>
           ${budgetBarHtml(mtdSpend,budget)}
@@ -366,7 +355,6 @@ function renderOverview() {
   }).join('') + '</div>';
 }
 
-// ── CLIENT DETAIL ─────────────────────────────────────────────
 function showClient(clientId, dateMode) {
   if (dateMode) currentDateMode = dateMode;
   currentClientId = clientId;
@@ -375,24 +363,20 @@ function showClient(clientId, dateMode) {
   const sym = cur(c);
 
   const ins       = getInsightsForRange(c.id, from, to);
-  const insMeta   = getInsightsForRange(c.id, from, to, 'facebook');
-  const insGoogle = getInsightsForRange(c.id, from, to, 'google');
   const mtdMeta   = getMonthSpend(c.id, 'facebook');
   const mtdGoogle = getMonthSpend(c.id, 'google');
   const mtdTotal  = mtdMeta + mtdGoogle;
   const budgetMeta   = c.monthly_budget_meta   || 0;
   const budgetGoogle = c.monthly_budget_google  || 0;
   const budgetTotal  = budgetMeta + budgetGoogle;
-  const pace       = getMonthPace();
-  const statusMeta   = getBudgetStatus(mtdMeta, budgetMeta);
-  const statusGoogle = getBudgetStatus(mtdGoogle, budgetGoogle);
-  const statusTotal  = getBudgetStatus(mtdTotal, budgetTotal);
+  const pace         = getMonthPace();
+  const paceDay      = Math.round(pace * new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate());
+  const daysLeft     = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate() - new Date().getDate();
 
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(`tab-${clientId}`)?.classList.add('active');
 
   const cpl = ins.leads>0 ? sym+Math.round(ins.spend/ins.leads).toLocaleString('he-IL') : '-';
-  const paceDay = Math.round(pace * new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate());
 
   const dateButtons = [
     {mode:'today',label:'היום'},{mode:'yesterday',label:'אתמול'},
@@ -403,14 +387,10 @@ function showClient(clientId, dateMode) {
     <div class="budget-total-card">
       <div class="budget-total-header">
         <div class="budget-total-title">💰 סה"כ תקציב חודשי</div>
-        ${statusTotal?`<span class="budget-status-badge ${statusTotal.cls}">${statusTotal.label}</span>`:''}
+        ${getBudgetStatus(mtdTotal,budgetTotal)?`<span class="budget-status-badge ${getBudgetStatus(mtdTotal,budgetTotal).cls}">${getBudgetStatus(mtdTotal,budgetTotal).label}</span>`:''}
       </div>
-      <div class="budget-total-row">
-        <div>
-          <div class="budget-total-amount">${sym}${Math.round(mtdTotal).toLocaleString('he-IL')} <span style="font-size:16px;color:var(--muted)">/ ${sym}${Math.round(budgetTotal).toLocaleString('he-IL')}</span></div>
-          <div class="budget-pace-info" style="margin-top:4px">יום ${paceDay} בחודש - אמורים להיות על <span>${(pace*100).toFixed(0)}%</span> | בפועל: <span>${budgetTotal>0?(mtdTotal/budgetTotal*100).toFixed(0):0}%</span></div>
-        </div>
-      </div>
+      <div class="budget-total-amount">${sym}${Math.round(mtdTotal).toLocaleString('he-IL')} <span style="font-size:16px;color:var(--muted)">/ ${sym}${Math.round(budgetTotal).toLocaleString('he-IL')}</span></div>
+      <div class="budget-pace-info" style="margin-top:6px">יום ${paceDay} בחודש - אמורים להיות על <span>${(pace*100).toFixed(0)}%</span> | בפועל: <span>${(mtdTotal/budgetTotal*100).toFixed(0)}%</span></div>
       ${budgetBarHtml(mtdTotal,budgetTotal,true)}
     </div>` : '';
 
@@ -421,11 +401,11 @@ function showClient(clientId, dateMode) {
         <div class="budget-card-header">
           <div class="budget-card-title">📘 Meta</div>
           <div style="display:flex;gap:8px;align-items:center">
-            ${statusMeta?`<span class="budget-status-badge ${statusMeta.cls}">${statusMeta.label}</span>`:''}
-            <button class="edit-btn" onclick="toggleBudgetEdit('meta',${c.id})">✏️</button>
+            ${getBudgetStatus(mtdMeta,budgetMeta)?`<span class="budget-status-badge ${getBudgetStatus(mtdMeta,budgetMeta).cls}">${getBudgetStatus(mtdMeta,budgetMeta).label}</span>`:''}
+            <button class="edit-btn" onclick="toggleBudgetEdit('meta')">✏️</button>
           </div>
         </div>
-        <div class="budget-amount" id="budget-meta-val">${sym}${Math.round(budgetMeta).toLocaleString('he-IL')}</div>
+        <div class="budget-amount">${sym}${Math.round(budgetMeta).toLocaleString('he-IL')}</div>
         <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdMeta).toLocaleString('he-IL')} (${budgetMeta>0?(mtdMeta/budgetMeta*100).toFixed(0):0}%)</div>
         ${budgetBarHtml(mtdMeta,budgetMeta)}
         <div id="budget-meta-edit" style="display:none;margin-top:10px">
@@ -440,11 +420,11 @@ function showClient(clientId, dateMode) {
         <div class="budget-card-header">
           <div class="budget-card-title">🔴 Google</div>
           <div style="display:flex;gap:8px;align-items:center">
-            ${statusGoogle?`<span class="budget-status-badge ${statusGoogle.cls}">${statusGoogle.label}</span>`:''}
-            <button class="edit-btn" onclick="toggleBudgetEdit('google',${c.id})">✏️</button>
+            ${getBudgetStatus(mtdGoogle,budgetGoogle)?`<span class="budget-status-badge ${getBudgetStatus(mtdGoogle,budgetGoogle).cls}">${getBudgetStatus(mtdGoogle,budgetGoogle).label}</span>`:''}
+            <button class="edit-btn" onclick="toggleBudgetEdit('google')">✏️</button>
           </div>
         </div>
-        <div class="budget-amount" id="budget-google-val">${sym}${Math.round(budgetGoogle).toLocaleString('he-IL')}</div>
+        <div class="budget-amount">${sym}${Math.round(budgetGoogle).toLocaleString('he-IL')}</div>
         <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdGoogle).toLocaleString('he-IL')} (${budgetGoogle>0?(mtdGoogle/budgetGoogle*100).toFixed(0):0}%)</div>
         ${budgetBarHtml(mtdGoogle,budgetGoogle)}
         <div id="budget-google-edit" style="display:none;margin-top:10px">
@@ -460,28 +440,15 @@ function showClient(clientId, dateMode) {
   const metaCamps   = camps.filter(x => x.platform==='facebook');
   const googleCamps = camps.filter(x => x.platform==='google');
 
-  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate();
-  const remainingDays = daysInMonth - new Date().getDate();
-
-  const campTable = (list) => {   if (!list.length) return '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">אין קמפיינים</td></tr>';   const now = new Date();   const pad = n => String(n).padStart(2,'0');   const monthFrom = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;   const monthTo   = now.toISOString().split('T')[0];   const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();   const remainingDays = daysInMonth - now.getDate();    return list.map(camp => {     const sc = camp.status==='ENABLED'||camp.status==='ACTIVE'?'active':'paused';     const mb = parseFloat(camp.monthly_budget||0);     const campSpend = allInsights       .filter(r => r.campaign_id===camp.id && r.date>=monthFrom && r.date<=monthTo)       .reduce((s,r) => s + parseFloat(r.spend||0), 0);     const pct = mb>0 ? (campSpend/mb*100).toFixed(0) : '-';     const campStatus = mb>0 ? getBudgetStatus(campSpend, mb) : null;     const dailyTarget = mb>0 && remainingDays>0 ? sym+Math.round((mb-campSpend)/remainingDays).toLocaleString('he-IL') : '-';     return `<tr>       <td><span class="status-dot ${sc}"></span>${camp.campaign_name||'-'}</td>       <td>${camp.status||'-'}</td>       <td>         <div style="display:flex;align-items:center;gap:6px;">           <input class="camp-budget-input" id="cb-${camp.id}" type="number" value="${mb||''}" placeholder="0" />           <button class="camp-save-btn" onclick="saveCampBudget(${camp.id},${clientId})">✓</button>         </div>       </td>       <td>${sym}${Math.round(campSpend).toLocaleString('he-IL')}</td>       <td>${campStatus?`<span class="budget-status-badge ${campStatus.cls}">${pct}% - ${campStatus.label}</span>`:pct+'%'}</td>       <td>${dailyTarget}</td>     </tr>`;   }).join(''); };   if (!list.length) return '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">אין קמפיינים</td></tr>';   const now = new Date();   const pad = n => String(n).padStart(2,'0');   const monthFrom = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;   const monthTo   = now.toISOString().split('T')[0];   const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();   const remainingDays = daysInMonth - now.getDate();    return list.map(camp => {     const sc = camp.status==='ENABLED'||camp.status==='ACTIVE'?'active':'paused';     const mb = parseFloat(camp.monthly_budget||0);     const campSpend = allInsights       .filter(r => r.campaign_id===camp.id && r.date>=monthFrom && r.date<=monthTo)       .reduce((s,r) => s + parseFloat(r.spend||0), 0);     const pct = mb>0 ? (campSpend/mb*100).toFixed(0) : '-';     const campStatus = mb>0 ? getBudgetStatus(campSpend, mb) : null;     const dailyTarget = mb>0 && remainingDays>0 ? sym+Math.round((mb-campSpend)/remainingDays).toLocaleString('he-IL') : '-';     return `<tr>       <td><span class="status-dot ${sc}"></span>${camp.campaign_name||'-'}</td>       <td>${camp.status||'-'}</td>       <td>         <div style="display:flex;align-items:center;gap:6px;">           <input class="camp-budget-input" id="cb-${camp.id}" type="number" value="${mb||''}" placeholder="0" />           <button class="camp-save-btn" onclick="saveCampBudget(${camp.id},${clientId})">✓</button>         </div>       </td>       <td>${sym}${Math.round(campSpend).toLocaleString('he-IL')}</td>       <td>${campStatus?`<span class="budget-status-badge ${campStatus.cls}">${pct}% - ${campStatus.label}</span>`:pct+'%'}</td>       <td>${dailyTarget}</td>     </tr>`;   }).join(''); };
+  const campTable = (list) => {
     if (!list.length) return '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">אין קמפיינים</td></tr>';
     return list.map(camp => {
       const sc = camp.status==='ENABLED'||camp.status==='ACTIVE'?'active':'paused';
       const mb = parseFloat(camp.monthly_budget||0);
-      // חישוב הוצאה חודשית לקמפיין מה-allInsights לפי campaign_id
-      const now = new Date();
-      const pad = n => String(n).padStart(2,'0');
-      const monthFrom = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
-      const monthTo   = now.toISOString().split('T')[0];
-      const campSpend = allInsights
-        .filter(r => r.client_id===clientId && r.date>=monthFrom && r.date<=monthTo)
-        .reduce((s,r) => s + parseFloat(r.spend||0), 0);
-      // שימוש בהוצאה ברמת לקוח/פלטפורמה לפי פלטפורמה
-      const platSpend = list===metaCamps ? mtdMeta : mtdGoogle;
-      const campPct   = mb>0 ? (platSpend/mb*100).toFixed(0) : '-';
-      const campStatus = mb>0 ? getBudgetStatus(platSpend, mb) : null;
-      const dailyTarget = mb>0 && remainingDays>0 ? Math.round((mb-platSpend)/remainingDays) : '-';
-
+      const campSpend = getCampMonthSpend(camp.id);
+      const pct = mb>0 ? (campSpend/mb*100).toFixed(0) : '-';
+      const campStatus = mb>0 ? getBudgetStatus(campSpend, mb) : null;
+      const dailyTarget = mb>0 && daysLeft>0 ? sym+Math.round((mb-campSpend)/daysLeft).toLocaleString('he-IL') : '-';
       return `<tr>
         <td><span class="status-dot ${sc}"></span>${camp.campaign_name||'-'}</td>
         <td>${camp.status||'-'}</td>
@@ -491,9 +458,9 @@ function showClient(clientId, dateMode) {
             <button class="camp-save-btn" onclick="saveCampBudget(${camp.id},${clientId})">✓</button>
           </div>
         </td>
-        <td>${sym}${Math.round(platSpend).toLocaleString('he-IL')}</td>
-        <td>${campStatus?`<span class="budget-status-badge ${campStatus.cls}">${campPct}% - ${campStatus.label}</span>`:campPct+'%'}</td>
-        <td>${dailyTarget!=='-'?sym+dailyTarget.toLocaleString('he-IL'):'-'}</td>
+        <td>${sym}${Math.round(campSpend).toLocaleString('he-IL')}</td>
+        <td>${campStatus?`<span class="budget-status-badge ${campStatus.cls}">${pct}% - ${campStatus.label}</span>`:pct==='0'?'0%':pct+'%'}</td>
+        <td>${dailyTarget}</td>
       </tr>`;
     }).join('');
   };
@@ -507,90 +474,42 @@ function showClient(clientId, dateMode) {
       <div class="kpi-card"><div class="kpi-label">עלות לליד</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">קליקים</div><div class="kpi-val">${Math.round(ins.clicks).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
     </div>
-    <div class="budget-section">
-      ${totalCard}
-      ${subCards}
-    </div>
+    <div class="budget-section">${totalCard}${subCards}</div>
     <div class="chart-card">
       <div class="chart-title">📈 גרף ביצועים - ${label}</div>
       <div class="chart-wrap"><canvas id="perf-chart"></canvas></div>
     </div>
-    ${metaCamps.length?`
-    <div class="section-title">📘 קמפיינים Meta</div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th></tr></thead>
-      <tbody>${campTable(metaCamps)}</tbody>
-    </table></div>`:''}
-    ${googleCamps.length?`
-    <div class="section-title">🔴 קמפיינים Google</div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th></tr></thead>
-      <tbody>${campTable(googleCamps)}</tbody>
-    </table></div>`:''}
+    ${metaCamps.length?`<div class="section-title">📘 קמפיינים Meta</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th></tr></thead><tbody>${campTable(metaCamps)}</tbody></table></div>`:''}
+    ${googleCamps.length?`<div class="section-title">🔴 קמפיינים Google</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th></tr></thead><tbody>${campTable(googleCamps)}</tbody></table></div>`:''}
   `;
 
-  // ── CHART ──
   renderChart(c, from, to, sym);
 }
 
 function renderChart(c, from, to, sym) {
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
-
   const dayMap = getInsightsByDay(c.id, from, to);
   const dates  = Object.keys(dayMap).sort();
   if (!dates.length) return;
-
-  const spendData = dates.map(d => dayMap[d].spend.toFixed(0));
-  const cplData   = dates.map(d => dayMap[d].leads>0 ? (dayMap[d].spend/dayMap[d].leads).toFixed(0) : null);
-
   const ctx = document.getElementById('perf-chart')?.getContext('2d');
   if (!ctx) return;
-
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
       labels: dates.map(d => d.slice(5)),
       datasets: [
-        {
-          label: 'הוצאה (' + sym + ')',
-          data: spendData,
-          borderColor: '#3b82f6',
-          backgroundColor: 'rgba(59,130,246,0.1)',
-          tension: 0.3,
-          fill: true,
-          yAxisID: 'y'
-        },
-        {
-          label: 'עלות לליד (' + sym + ')',
-          data: cplData,
-          borderColor: '#f59e0b',
-          backgroundColor: 'rgba(245,158,11,0.1)',
-          tension: 0.3,
-          fill: false,
-          yAxisID: 'y1',
-          spanGaps: true
-        }
+        { label:'הוצאה ('+sym+')', data:dates.map(d=>dayMap[d].spend.toFixed(0)), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.3, fill:true, yAxisID:'y' },
+        { label:'עלות לליד ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
       ]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode:'index', intersect:false },
-      plugins: {
-        legend: { labels: { color:'#94a3b8', font:{ family:'Heebo' } } }
-      },
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{ legend:{ labels:{ color:'#94a3b8', font:{ family:'Heebo' } } } },
       scales: {
-        x: { ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
-        y: {
-          type:'linear', position:'right',
-          ticks:{ color:'#60a5fa', callback: v => sym+Number(v).toLocaleString('he-IL') },
-          grid:{ color:'#1e2d45' }
-        },
-        y1: {
-          type:'linear', position:'left',
-          ticks:{ color:'#f59e0b', callback: v => sym+Number(v).toLocaleString('he-IL') },
-          grid:{ drawOnChartArea:false }
-        }
+        x:{ ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
+        y:{ type:'linear', position:'right', ticks:{ color:'#60a5fa', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ color:'#1e2d45' } },
+        y1:{ type:'linear', position:'left', ticks:{ color:'#f59e0b', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ drawOnChartArea:false } }
       }
     }
   });
@@ -607,8 +526,7 @@ async function saveBudget(platform, clientId) {
   const field = platform==='meta'?'monthly_budget_meta':'monthly_budget_google';
   try {
     await supaPatch('clients', `?id=eq.${clientId}`, { [field]:val });
-    const c = clients.find(x => x.id===clientId);
-    c[field] = val;
+    clients.find(x=>x.id===clientId)[field] = val;
     showToast('✅ תקציב עודכן!');
     showClient(clientId);
   } catch(e) { showToast('❌ שגיאה','red'); }
@@ -619,7 +537,7 @@ async function saveCampBudget(campId, clientId) {
   if (isNaN(val)||val<0) { showToast('סכום לא תקין','red'); return; }
   try {
     await supaPatch('campaigns', `?id=eq.${campId}`, { monthly_budget:val });
-    const camp = Object.values(campaigns).flat().find(x => x.id===campId);
+    const camp = Object.values(campaigns).flat().find(x=>x.id===campId);
     if (camp) camp.monthly_budget = val;
     showToast('✅ תקציב קמפיין עודכן!');
     showClient(clientId);
@@ -629,7 +547,7 @@ async function saveCampBudget(campId, clientId) {
 function buildTabs() {
   document.getElementById('tabs').innerHTML =
     `<button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>` +
-    clients.map(c => `<button class="tab" id="tab-${c.id}" onclick="showClient(${c.id})">${c.business_name}</button>`).join('');
+    clients.map(c=>`<button class="tab" id="tab-${c.id}" onclick="showClient(${c.id})">${c.business_name}</button>`).join('');
 }
 
 function showToast(msg, color='green') {
@@ -637,7 +555,7 @@ function showToast(msg, color='green') {
   t.textContent = msg;
   t.style.background = color==='red'?'var(--red)':'var(--green)';
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
+  setTimeout(()=>t.classList.remove('show'), 3000);
 }
 
 async function init() {
