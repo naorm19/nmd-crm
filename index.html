@@ -454,8 +454,10 @@ function showClient(clientId, dateMode) {
   };
 
   document.getElementById('main').innerHTML = `
-    <div class="client-header"><div class="client-title">${c.business_name}</div></div>
-    <div class="date-filter">${dateButtons}</div>
+<div style="position:sticky;top:60px;z-index:90;background:var(--bg);padding:12px 0;margin-bottom:8px;">
+  <div class="client-header"><div class="client-title">${c.business_name}</div></div>
+  <div class="date-filter" style="margin-bottom:0;">${dateButtons}</div>
+</div>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">הוצאה כוללת</div><div class="kpi-val" style="color:var(--accent2)">${sym}${Math.round(ins.spend).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
