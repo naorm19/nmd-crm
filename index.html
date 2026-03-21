@@ -75,7 +75,6 @@
   .budget-total-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
   .budget-total-title { font-size:14px; font-weight:700; color:var(--muted2); text-transform:uppercase; letter-spacing:0.5px; }
   .budget-total-amount { font-size:32px; font-weight:800; }
-  .budget-total-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
   .budget-pace-info { font-size:12px; color:var(--muted); }
   .budget-pace-info span { font-weight:700; }
   .budget-status-badge { font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; }
@@ -99,7 +98,6 @@
   .save-btn { background:var(--accent); color:white; border:none; padding:8px 14px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Heebo',sans-serif; }
   .save-btn:hover { opacity:0.85; }
   .chart-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:24px; }
-  .chart-title { font-size:14px; font-weight:700; color:var(--muted2); margin-bottom:16px; text-transform:uppercase; letter-spacing:0.5px; }
   .chart-wrap { position:relative; height:280px; }
   .section-title { font-size:14px; font-weight:700; color:var(--muted2); margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px; }
   .table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-bottom:24px; }
@@ -166,10 +164,10 @@ let chartInstance = null;
 function cur(client) { return client.currency === 'ILS' ? '₪' : '$'; }
 function goalLabel(client, type) {
   const s = client.goal_type === 'sales';
-  if (type === 'count') return s ? 'מכירות' : 'לידים';
-  if (type === 'today') return s ? 'מכירות היום' : 'לידים היום';
-  if (type === 'cpl')   return s ? 'עלות למכירה' : 'עלות לליד';
-  if (type === 'cps')   return s ? 'CPS היום' : 'CPL היום';
+  if (type==='count') return s ? 'מכירות' : 'לידים';
+  if (type==='today') return s ? 'מכירות היום' : 'לידים היום';
+  if (type==='cpl')   return s ? 'עלות למכירה' : 'עלות לליד';
+  if (type==='cps')   return s ? 'CPS היום' : 'CPL היום';
   return s ? 'מכירות' : 'לידים';
 }
 
@@ -299,21 +297,13 @@ function getMonthSpend(clientId, platform=null) {
 
 function budgetBarHtml(spent, budget, thick=false) {
   if (!budget) return '';
-  const pace     = getMonthPace();
-  const utilPct  = Math.min(100,(spent/budget*100));
-  const pacePct  = Math.min(100,pace*100);
-  const status   = getBudgetStatus(spent,budget);
+  const pace    = getMonthPace();
+  const utilPct = Math.min(100,(spent/budget*100));
+  const pacePct = Math.min(100,pace*100);
+  const status  = getBudgetStatus(spent,budget);
   const fillColor = status?.cls==='over'?'var(--red)':status?.cls==='warn'?'var(--yellow)':status?.cls==='under'?'var(--muted)':'var(--green)';
-  if (thick) return `
-    <div class="budget-bar-thick">
-      <div class="budget-bar-thick-fill" style="width:${utilPct}%;background:${fillColor}"></div>
-      <div class="budget-bar-thick-pace" style="right:${100-pacePct}%"></div>
-    </div>`;
-  return `
-    <div class="budget-bar">
-      <div class="budget-bar-fill" style="width:${utilPct}%;background:${fillColor}"></div>
-      <div class="budget-bar-pace" style="right:${100-pacePct}%"></div>
-    </div>`;
+  if (thick) return `<div class="budget-bar-thick"><div class="budget-bar-thick-fill" style="width:${utilPct}%;background:${fillColor}"></div><div class="budget-bar-thick-pace" style="right:${100-pacePct}%"></div></div>`;
+  return `<div class="budget-bar"><div class="budget-bar-fill" style="width:${utilPct}%;background:${fillColor}"></div><div class="budget-bar-pace" style="right:${100-pacePct}%"></div></div>`;
 }
 
 function showOverview() {
@@ -348,14 +338,7 @@ function renderOverview() {
           <div class="stat-item"><div class="stat-label">קמפיינים</div><div class="stat-value">${(campaigns[c.id]||[]).length}</div></div>
           <div class="stat-item"><div class="stat-label">${goalLabel(c,'cps')}</div><div class="stat-value yellow">${ins.leads>0?sym+Math.round(ins.spend/ins.leads).toLocaleString('he-IL'):'-'}</div></div>
         </div>
-        ${budget>0?`
-        <div class="budget-bar-wrap">
-          <div class="budget-bar-label">
-            <span>תקציב חודשי ${(mtdSpend/budget*100).toFixed(0)}%</span>
-            ${status?`<span class="budget-status-badge ${status.cls}">${status.label}</span>`:''}
-          </div>
-          ${budgetBarHtml(mtdSpend,budget)}
-        </div>`:''}
+        ${budget>0?`<div class="budget-bar-wrap"><div class="budget-bar-label"><span>תקציב חודשי ${(mtdSpend/budget*100).toFixed(0)}%</span>${status?`<span class="budget-status-badge ${status.cls}">${status.label}</span>`:''}</div>${budgetBarHtml(mtdSpend,budget)}</div>`:''}
       </div>`;
   }).join('') + '</div>';
 }
@@ -366,7 +349,6 @@ function showClient(clientId, dateMode) {
   const c = clients.find(x => x.id===clientId);
   const { from, to, label } = getDateRange(currentDateMode);
   const sym = cur(c);
-
   const ins       = getInsightsForRange(c.id, from, to);
   const mtdMeta   = getMonthSpend(c.id, 'facebook');
   const mtdGoogle = getMonthSpend(c.id, 'google');
@@ -374,15 +356,14 @@ function showClient(clientId, dateMode) {
   const budgetMeta   = c.monthly_budget_meta   || 0;
   const budgetGoogle = c.monthly_budget_google  || 0;
   const budgetTotal  = budgetMeta + budgetGoogle;
-  const pace         = getMonthPace();
-  const paceDay      = Math.round(pace * new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate());
-  const daysLeft     = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate() - new Date().getDate();
+  const pace     = getMonthPace();
+  const paceDay  = Math.round(pace * new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate());
+  const daysLeft = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate() - new Date().getDate();
 
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(`tab-${clientId}`)?.classList.add('active');
 
   const cpl = ins.leads>0 ? sym+Math.round(ins.spend/ins.leads).toLocaleString('he-IL') : '-';
-
   const dateButtons = [
     {mode:'today',label:'היום'},{mode:'yesterday',label:'אתמול'},
     {mode:'7d',label:'7 ימים'},{mode:'30d',label:'30 ימים'},{mode:'month',label:'החודש'}
@@ -399,49 +380,44 @@ function showClient(clientId, dateMode) {
       ${budgetBarHtml(mtdTotal,budgetTotal,true)}
     </div>` : '';
 
-  const subCards = `
-    <div class="budget-cards">
-      ${c.meta_ad_account_id?`
-      <div class="budget-card">
-        <div class="budget-card-header">
-          <div class="budget-card-title">📘 Meta</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            ${getBudgetStatus(mtdMeta,budgetMeta)?`<span class="budget-status-badge ${getBudgetStatus(mtdMeta,budgetMeta).cls}">${getBudgetStatus(mtdMeta,budgetMeta).label}</span>`:''}
-            <button class="edit-btn" onclick="toggleBudgetEdit('meta')">✏️</button>
-          </div>
+  const subCards = `<div class="budget-cards">
+    ${c.meta_ad_account_id?`<div class="budget-card">
+      <div class="budget-card-header"><div class="budget-card-title">📘 Meta</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${getBudgetStatus(mtdMeta,budgetMeta)?`<span class="budget-status-badge ${getBudgetStatus(mtdMeta,budgetMeta).cls}">${getBudgetStatus(mtdMeta,budgetMeta).label}</span>`:''}
+          <button class="edit-btn" onclick="toggleBudgetEdit('meta')">✏️</button>
         </div>
-        <div class="budget-amount">${sym}${Math.round(budgetMeta).toLocaleString('he-IL')}</div>
-        <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdMeta).toLocaleString('he-IL')} (${budgetMeta>0?(mtdMeta/budgetMeta*100).toFixed(0):0}%)</div>
-        ${budgetBarHtml(mtdMeta,budgetMeta)}
-        <div id="budget-meta-edit" style="display:none;margin-top:10px">
-          <div class="budget-edit-row">
-            <input class="budget-input" id="budget-meta-input" type="number" placeholder="תקציב חודשי" value="${budgetMeta}" />
-            <button class="save-btn" onclick="saveBudget('meta',${c.id})">שמור</button>
-          </div>
+      </div>
+      <div class="budget-amount">${sym}${Math.round(budgetMeta).toLocaleString('he-IL')}</div>
+      <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdMeta).toLocaleString('he-IL')} (${budgetMeta>0?(mtdMeta/budgetMeta*100).toFixed(0):0}%)</div>
+      ${budgetBarHtml(mtdMeta,budgetMeta)}
+      <div id="budget-meta-edit" style="display:none;margin-top:10px">
+        <div class="budget-edit-row">
+          <input class="budget-input" id="budget-meta-input" type="number" value="${budgetMeta}" />
+          <button class="save-btn" onclick="saveBudget('meta',${c.id})">שמור</button>
         </div>
-      </div>` : ''}
-      ${c.google_customer_id?`
-      <div class="budget-card">
-        <div class="budget-card-header">
-          <div class="budget-card-title">🔴 Google</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            ${getBudgetStatus(mtdGoogle,budgetGoogle)?`<span class="budget-status-badge ${getBudgetStatus(mtdGoogle,budgetGoogle).cls}">${getBudgetStatus(mtdGoogle,budgetGoogle).label}</span>`:''}
-            <button class="edit-btn" onclick="toggleBudgetEdit('google')">✏️</button>
-          </div>
+      </div>
+    </div>`:''}
+    ${c.google_customer_id?`<div class="budget-card">
+      <div class="budget-card-header"><div class="budget-card-title">🔴 Google</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${getBudgetStatus(mtdGoogle,budgetGoogle)?`<span class="budget-status-badge ${getBudgetStatus(mtdGoogle,budgetGoogle).cls}">${getBudgetStatus(mtdGoogle,budgetGoogle).label}</span>`:''}
+          <button class="edit-btn" onclick="toggleBudgetEdit('google')">✏️</button>
         </div>
-        <div class="budget-amount">${sym}${Math.round(budgetGoogle).toLocaleString('he-IL')}</div>
-        <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdGoogle).toLocaleString('he-IL')} (${budgetGoogle>0?(mtdGoogle/budgetGoogle*100).toFixed(0):0}%)</div>
-        ${budgetBarHtml(mtdGoogle,budgetGoogle)}
-        <div id="budget-google-edit" style="display:none;margin-top:10px">
-          <div class="budget-edit-row">
-            <input class="budget-input" id="budget-google-input" type="number" placeholder="תקציב חודשי" value="${budgetGoogle}" />
-            <button class="save-btn" onclick="saveBudget('google',${c.id})">שמור</button>
-          </div>
+      </div>
+      <div class="budget-amount">${sym}${Math.round(budgetGoogle).toLocaleString('he-IL')}</div>
+      <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdGoogle).toLocaleString('he-IL')} (${budgetGoogle>0?(mtdGoogle/budgetGoogle*100).toFixed(0):0}%)</div>
+      ${budgetBarHtml(mtdGoogle,budgetGoogle)}
+      <div id="budget-google-edit" style="display:none;margin-top:10px">
+        <div class="budget-edit-row">
+          <input class="budget-input" id="budget-google-input" type="number" value="${budgetGoogle}" />
+          <button class="save-btn" onclick="saveBudget('google',${c.id})">שמור</button>
         </div>
-      </div>` : ''}
-    </div>`;
+      </div>
+    </div>`:''}
+  </div>`;
 
-  const camps = campaigns[clientId] || [];
+  const camps       = campaigns[clientId] || [];
   const metaCamps   = camps.filter(x => x.platform==='facebook');
   const googleCamps = camps.filter(x => x.platform==='google');
 
@@ -460,12 +436,10 @@ function showClient(clientId, dateMode) {
       return `<tr>
         <td><span class="status-dot ${sc}"></span>${camp.campaign_name||'-'}</td>
         <td>${camp.status||'-'}</td>
-        <td>
-          <div style="display:flex;align-items:center;gap:6px">
-            <input class="camp-budget-input" id="cb-${camp.id}" type="number" value="${mb||''}" placeholder="0" />
-            <button class="camp-save-btn" onclick="saveCampBudget(${camp.id},${clientId})">✓</button>
-          </div>
-        </td>
+        <td><div style="display:flex;align-items:center;gap:6px">
+          <input class="camp-budget-input" id="cb-${camp.id}" type="number" value="${mb||''}" placeholder="0" />
+          <button class="camp-save-btn" onclick="saveCampBudget(${camp.id},${clientId})">✓</button>
+        </div></td>
         <td>${sym}${Math.round(campSpend).toLocaleString('he-IL')}</td>
         <td>${campStatus?`<span class="budget-status-badge ${campStatus.cls}">${pct}% - ${campStatus.label}</span>`:pct==='0'?'0%':pct+'%'}</td>
         <td>${dailyTarget}</td>
@@ -490,8 +464,8 @@ function showClient(clientId, dateMode) {
     </div>
     <div class="budget-section">${totalCard}${subCards}</div>
     <div class="chart-card">
-      <div class="chart-title" style="display:flex;justify-content:space-between;align-items:center;">
-        <span>📈 גרף ביצועים - ${label}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;">📈 גרף ביצועים - ${label}</span>
         <button onclick="toggleChart()" id="chart-toggle-btn" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;">הסתר</button>
       </div>
       <div class="chart-wrap" id="chart-wrap"><canvas id="perf-chart"></canvas></div>
@@ -500,185 +474,10 @@ function showClient(clientId, dateMode) {
     ${googleCamps.length?`<div class="section-title">🔴 קמפיינים Google</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th></tr></thead><tbody>${campTable(googleCamps)}</tbody></table></div>`:''}
   `;
 
-  renderChart(c, from, to, sym); if (c.business_name === 'The Ductors') renderLeaderTable(c, sym);
+  renderChart(c, from, to, sym);
+  if (c.business_name === 'The Ductors') renderLeaderTable(c, sym);
 }
-async function renderLeaderTable(c, sym) {
-  const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT0ItiZNLkWNI3pLY9URnnnzKs880m2o5T3SYIfhbt23iL2ln0T627u8hkyU1wO4CQIRUQ32oyWSbcz/pub?gid=699410654&single=true&output=csv';
 
-  try {
-    const res  = await fetch(SHEET_URL);
-    const text = await res.text();
-
-    const now = new Date();
-    const currentMonth = String(now.getMonth()+1).padStart(2,'0');
-    const currentYear  = String(now.getFullYear());
-
-    const rows = text.trim().split('\n').slice(1).map(r => {
-      const cols = r.split(',');
-      return {
-        name:     cols[0]||'',
-        phone:    cols[1]||'',
-        status:   cols[2]||'',
-        campaign: cols[3]||'',
-        date:     cols[4]||''
-      };
-    }).filter(r => {
-      if (!r.date || !r.date.trim()) return false;
-      const parts = r.date.trim().split('/');
-      if (parts.length !== 3) return false;
-      return parts[1] === currentMonth && parts[2] === currentYear;
-    });
-
-    // קיבוץ לפי קמפיין
-    const map = {};
-    rows.forEach(r => {
-      const camp = r.campaign.trim() || 'לא ידוע';
-      if (!map[camp]) map[camp] = { leads:0, closed:0 };
-      map[camp].leads++;
-      if (r.status.trim() === 'נסגר') map[camp].closed++;
-    });
-
-    // חיבור הוצאה לפי שם קמפיין
-    const allCamps = campaigns[c.id] || [];
-    const spendMap = {};
-    allCamps.forEach(camp => {
-      spendMap[camp.campaign_name] = getCampMonthSpend(camp.id);
-    });
-
-    const totalLeads  = Object.values(map).reduce((s,v) => s+v.leads, 0);
-    const totalClosed = Object.values(map).reduce((s,v) => s+v.closed, 0);
-    const totalSpend  = Object.values(spendMap).reduce((s,v) => s+v, 0);
-
-    const tableRows = Object.entries(map).map(([camp, v]) => {
-      const closePct  = v.leads>0 ? (v.closed/v.leads*100).toFixed(0) : 0;
-      const spend     = spendMap[camp] || 0;
-      const costClose = v.closed>0 ? sym+Math.round(spend/v.closed).toLocaleString('he-IL') : '-';
-      return `<tr>
-        <td>${camp}</td>
-        <td>${v.leads}</td>
-        <td>${v.closed}</td>
-        <td>${closePct}%</td>
-        <td>${costClose}</td>
-      </tr>`;
-    }).join('');
-
-    const totalClosePct  = totalLeads>0 ? (totalClosed/totalLeads*100).toFixed(0) : 0;
-    const totalCostClose = totalClosed>0 ? sym+Math.round(totalSpend/totalClosed).toLocaleString('he-IL') : '-';
-
-    const container = document.createElement('div');
-    container.innerHTML = `
-      <div class="section-title">📋 נתוני Leader - ${currentMonth}/${currentYear}</div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>קמפיין</th>
-              <th>לידים</th>
-              <th>נסגרו</th>
-              <th>% סגירה</th>
-              <th>עלות סגירה</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-            <tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
-              <td>סה"כ</td>
-              <td>${totalLeads}</td>
-              <td>${totalClosed}</td>
-              <td>${totalClosePct}%</td>
-              <td>${totalCostClose}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>`;
-
-    document.getElementById('main').appendChild(container);
-  } catch(e) {
-    console.error('Leader fetch error:', e);
-  }
-}
-  
-  try {
-    const res  = await fetch(SHEET_URL);
-    const text = await res.text();
-    const rows = text.trim().split('\n').slice(1).map(r => {
-      const cols = r.split(',');
-      return { name: cols[0]||'', phone: cols[1]||'', status: cols[2]||'', campaign: cols[3]||'', date: cols[4]||'' };
-    }).filter(r => r.phone && r.phone.trim() && isNaN(r.phone.trim()));
-    const now = new Date();
-const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-const filtered = rows.filter(r => r.date && r.date.includes(monthStr.split('-')[1]+'/'+monthStr.split('-')[0] || r.date.startsWith(monthStr)));
-
-    // קיבוץ לפי קמפיין
-    const map = {};
-    rows.forEach(r => {
-      const camp = r.campaign.trim() || 'לא ידוע';
-      if (!map[camp]) map[camp] = { leads:0, closed:0, spend:0 };
-      map[camp].leads++;
-      if (r.status.trim() === 'נסגר') map[camp].closed++;
-    });
-
-    // חיבור לתקציב מ-Supabase
-    const { from: mFrom, to: mTo } = getMonthRange();
-    const allCamps = campaigns[c.id] || [];
-    allCamps.forEach(camp => {
-      const key = camp.campaign_name;
-      if (map[key]) {
-        map[key].spend = getCampMonthSpend(camp.id);
-      }
-    });
-
-    const totalLeads  = Object.values(map).reduce((s,v) => s+v.leads, 0);
-    const totalClosed = Object.values(map).reduce((s,v) => s+v.closed, 0);
-    const totalSpend  = Object.values(map).reduce((s,v) => s+v.spend, 0);
-
-    const rows2 = Object.entries(map).map(([camp, v]) => {
-      const closePct  = v.leads>0 ? (v.closed/v.leads*100).toFixed(0) : 0;
-      const costClose = v.closed>0 ? sym+Math.round(v.spend/v.closed).toLocaleString('he-IL') : '-';
-      return `<tr>
-        <td>${camp}</td>
-        <td>${v.leads}</td>
-        <td>${v.closed}</td>
-        <td>${closePct}%</td>
-        <td>${costClose}</td>
-      </tr>`;
-    }).join('');
-
-    const totalClosePct  = totalLeads>0 ? (totalClosed/totalLeads*100).toFixed(0) : 0;
-    const totalCostClose = totalClosed>0 ? sym+Math.round(totalSpend/totalClosed).toLocaleString('he-IL') : '-';
-
-    const container = document.createElement('div');
-    container.innerHTML = `
-      <div class="section-title">📋 נתוני Leader - החודש</div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>קמפיין</th>
-              <th>לידים</th>
-              <th>נסגרו</th>
-              <th>% סגירה</th>
-              <th>עלות סגירה</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows2}
-            <tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
-              <td>סה"כ</td>
-              <td>${totalLeads}</td>
-              <td>${totalClosed}</td>
-              <td>${totalClosePct}%</td>
-              <td>${totalCostClose}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>`;
-
-    document.getElementById('main').appendChild(container);
-  } catch(e) {
-    console.error('Leader fetch error:', e);
-  }
-}
 function renderChart(c, from, to, sym) {
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
   const dayMap = getInsightsByDay(c.id, from, to);
@@ -708,12 +507,73 @@ function renderChart(c, from, to, sym) {
   });
 }
 
+async function renderLeaderTable(c, sym) {
+  const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT0ItiZNLkWNI3pLY9URnnnzKs880m2o5T3SYIfhbt23iL2ln0T627u8hkyU1wO4CQIRUQ32oyWSbcz/pub?gid=699410654&single=true&output=csv';
+  try {
+    const res  = await fetch(SHEET_URL);
+    const text = await res.text();
+    const now = new Date();
+    const currentMonth = String(now.getMonth()+1).padStart(2,'0');
+    const currentYear  = String(now.getFullYear());
+
+    const rows = text.trim().split('\n').slice(1).map(r => {
+      const cols = r.split(',');
+      return { name:cols[0]||'', phone:cols[1]||'', status:cols[2]||'', campaign:cols[3]||'', date:cols[4]||'' };
+    }).filter(r => {
+      if (!r.date||!r.date.trim()) return false;
+      const parts = r.date.trim().split('/');
+      if (parts.length!==3) return false;
+      return parts[1]===currentMonth && parts[2]===currentYear;
+    });
+
+    const map = {};
+    rows.forEach(r => {
+      const camp = r.campaign.trim()||'לא ידוע';
+      if (!map[camp]) map[camp] = { leads:0, closed:0 };
+      map[camp].leads++;
+      if (r.status.trim()==='נסגר') map[camp].closed++;
+    });
+
+    const allCamps = campaigns[c.id]||[];
+    const spendMap = {};
+    allCamps.forEach(camp => { spendMap[camp.campaign_name] = getCampMonthSpend(camp.id); });
+
+    const totalLeads  = Object.values(map).reduce((s,v)=>s+v.leads,0);
+    const totalClosed = Object.values(map).reduce((s,v)=>s+v.closed,0);
+    const totalSpend  = Object.values(spendMap).reduce((s,v)=>s+v,0);
+
+    const tableRows = Object.entries(map).map(([camp,v]) => {
+      const closePct  = v.leads>0?(v.closed/v.leads*100).toFixed(0):0;
+      const spend     = spendMap[camp]||0;
+      const costClose = v.closed>0?sym+Math.round(spend/v.closed).toLocaleString('he-IL'):'-';
+      return `<tr><td>${camp}</td><td>${v.leads}</td><td>${v.closed}</td><td>${closePct}%</td><td>${costClose}</td></tr>`;
+    }).join('');
+
+    const totalClosePct  = totalLeads>0?(totalClosed/totalLeads*100).toFixed(0):0;
+    const totalCostClose = totalClosed>0?sym+Math.round(totalSpend/totalClosed).toLocaleString('he-IL'):'-';
+
+    const container = document.createElement('div');
+    container.innerHTML = `
+      <div class="section-title">📋 נתוני Leader - ${currentMonth}/${currentYear}</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>קמפיין</th><th>לידים</th><th>נסגרו</th><th>% סגירה</th><th>עלות סגירה</th></tr></thead>
+        <tbody>
+          ${tableRows}
+          <tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
+            <td>סה"כ</td><td>${totalLeads}</td><td>${totalClosed}</td><td>${totalClosePct}%</td><td>${totalCostClose}</td>
+          </tr>
+        </tbody>
+      </table></div>`;
+    document.getElementById('main').appendChild(container);
+  } catch(e) { console.error('Leader fetch error:', e); }
+}
+
 function toggleChart() {
   const wrap = document.getElementById('chart-wrap');
   const btn  = document.getElementById('chart-toggle-btn');
-  const hidden = wrap.style.display === 'none';
-  wrap.style.display = hidden ? 'block' : 'none';
-  btn.textContent = hidden ? 'הסתר' : 'הצג';
+  const hidden = wrap.style.display==='none';
+  wrap.style.display = hidden?'block':'none';
+  btn.textContent = hidden?'הסתר':'הצג';
 }
 
 function toggleBudgetEdit(platform) {
