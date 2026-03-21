@@ -475,7 +475,7 @@ function showClient(clientId, dateMode) {
   `;
 
   renderChart(c, from, to, sym);
-  if (c.business_name === 'The Ductors') renderLeaderTable(c, sym);
+  if (c.business_name === 'The Ductors') renderLeaderTable(c, sym, from, to, label);
 }
 
 function renderChart(c, from, to, sym) {
@@ -512,7 +512,6 @@ async function renderLeaderTable(c, sym, filterFrom, filterTo, label) {
   try {
     const res  = await fetch(SHEET_URL);
     const text = await res.text();
-
     const rows = text.trim().split('\n').slice(1).map(r => {
       const cols = r.split(',');
       return { name:cols[0]||'', phone:cols[1]||'', status:cols[2]||'', campaign:cols[3]||'', date:cols[4]||'' };
@@ -553,41 +552,6 @@ async function renderLeaderTable(c, sym, filterFrom, filterTo, label) {
     const container = document.createElement('div');
     container.innerHTML = `
       <div class="section-title">📋 נתוני Leader - ${label}</div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>קמפיין</th><th>לידים</th><th>נסגרו</th><th>% סגירה</th><th>עלות סגירה</th></tr></thead>
-        <tbody>
-          ${tableRows}
-          <tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
-            <td>סה"כ</td><td>${totalLeads}</td><td>${totalClosed}</td><td>${totalClosePct}%</td><td>${totalCostClose}</td>
-          </tr>
-        </tbody>
-      </table></div>`;
-    document.getElementById('main').appendChild(container);
-  } catch(e) { console.error('Leader fetch error:', e); }
-}
-    });
-
-    const allCamps = campaigns[c.id]||[];
-    const spendMap = {};
-    allCamps.forEach(camp => { spendMap[camp.campaign_name] = getCampMonthSpend(camp.id); });
-
-    const totalLeads  = Object.values(map).reduce((s,v)=>s+v.leads,0);
-    const totalClosed = Object.values(map).reduce((s,v)=>s+v.closed,0);
-    const totalSpend  = Object.values(spendMap).reduce((s,v)=>s+v,0);
-
-    const tableRows = Object.entries(map).map(([camp,v]) => {
-      const closePct  = v.leads>0?(v.closed/v.leads*100).toFixed(0):0;
-      const spend     = spendMap[camp]||0;
-      const costClose = v.closed>0?sym+Math.round(spend/v.closed).toLocaleString('he-IL'):'-';
-      return `<tr><td>${camp}</td><td>${v.leads}</td><td>${v.closed}</td><td>${closePct}%</td><td>${costClose}</td></tr>`;
-    }).join('');
-
-    const totalClosePct  = totalLeads>0?(totalClosed/totalLeads*100).toFixed(0):0;
-    const totalCostClose = totalClosed>0?sym+Math.round(totalSpend/totalClosed).toLocaleString('he-IL'):'-';
-
-    const container = document.createElement('div');
-    container.innerHTML = `
-      <div class="section-title">📋 נתוני Leader - ${currentMonth}/${currentYear}</div>
       <div class="table-wrap"><table>
         <thead><tr><th>קמפיין</th><th>לידים</th><th>נסגרו</th><th>% סגירה</th><th>עלות סגירה</th></tr></thead>
         <tbody>
