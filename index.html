@@ -164,6 +164,14 @@ const SESSION_KEY = 'nmd_auth';
 let chartInstance = null;
 
 function cur(client) { return client.currency === 'ILS' ? '₪' : '$'; }
+function goalLabel(client, type) {
+  const s = client.goal_type === 'sales';
+  if (type === 'count') return s ? 'מכירות' : 'לידים';
+  if (type === 'today') return s ? 'מכירות היום' : 'לידים היום';
+  if (type === 'cpl')   return s ? 'עלות למכירה' : 'עלות לליד';
+  if (type === 'cps')   return s ? 'CPS היום' : 'CPL היום';
+  return s ? 'מכירות' : 'לידים';
+}
 
 function getMonthPace() {
   const now = new Date();
@@ -195,10 +203,7 @@ function getDateRange(mode) {
 function getMonthRange() {
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
-  return {
-    from: `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`,
-    to:   now.toISOString().split('T')[0]
-  };
+  return { from:`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`, to:now.toISOString().split('T')[0] };
 }
 
 let currentDateMode = 'today';
@@ -339,9 +344,9 @@ function renderOverview() {
         </div>
         <div class="client-stats">
           <div class="stat-item"><div class="stat-label">הוצאה היום</div><div class="stat-value blue">${sym}${Math.round(ins.spend).toLocaleString('he-IL')}</div></div>
-          <div class="stat-item"><div class="stat-label">לידים היום</div><div class="stat-value green">${ins.leads}</div></div>
+          <div class="stat-item"><div class="stat-label">${goalLabel(c,'today')}</div><div class="stat-value green">${ins.leads}</div></div>
           <div class="stat-item"><div class="stat-label">קמפיינים</div><div class="stat-value">${(campaigns[c.id]||[]).length}</div></div>
-          <div class="stat-item"><div class="stat-label">CPL היום</div><div class="stat-value yellow">${ins.leads>0?sym+Math.round(ins.spend/ins.leads).toLocaleString('he-IL'):'-'}</div></div>
+          <div class="stat-item"><div class="stat-label">${goalLabel(c,'cps')}</div><div class="stat-value yellow">${ins.leads>0?sym+Math.round(ins.spend/ins.leads).toLocaleString('he-IL'):'-'}</div></div>
         </div>
         ${budget>0?`
         <div class="budget-bar-wrap">
@@ -443,8 +448,8 @@ function showClient(clientId, dateMode) {
   const campTable = (list) => {
     if (!list.length) return '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">אין קמפיינים</td></tr>';
     const totalBudget = list.reduce((s,c) => s + parseFloat(c.monthly_budget||0), 0);
-const totalSpend  = list.reduce((s,c) => s + getCampMonthSpend(c.id), 0);
-const totalDaily  = totalBudget>0 && daysLeft>0 ? sym+Math.round((totalBudget-totalSpend)/daysLeft).toLocaleString('he-IL') : '-';
+    const totalSpend  = list.reduce((s,c) => s + getCampMonthSpend(c.id), 0);
+    const totalDaily  = totalBudget>0 && daysLeft>0 ? sym+Math.round((totalBudget-totalSpend)/daysLeft).toLocaleString('he-IL') : '-';
     return list.map(camp => {
       const sc = camp.status==='ENABLED'||camp.status==='ACTIVE'?'active':'paused';
       const mb = parseFloat(camp.monthly_budget||0);
@@ -465,26 +470,30 @@ const totalDaily  = totalBudget>0 && daysLeft>0 ? sym+Math.round((totalBudget-to
         <td>${campStatus?`<span class="budget-status-badge ${campStatus.cls}">${pct}% - ${campStatus.label}</span>`:pct==='0'?'0%':pct+'%'}</td>
         <td>${dailyTarget}</td>
       </tr>`;
-}).join('') + `<tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
-  <td colspan="2" style="padding:12px 16px;color:var(--muted2)">סה"כ</td>
-  <td style="padding:12px 16px;">${sym}${Math.round(totalBudget).toLocaleString('he-IL')}</td>
-  <td style="padding:12px 16px;">${sym}${Math.round(totalSpend).toLocaleString('he-IL')}</td>
-  <td style="padding:12px 16px;"></td>
-  <td style="padding:12px 16px;">${totalDaily}</td>
-</tr>`;  };
+    }).join('') + `<tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
+      <td colspan="2" style="padding:12px 16px;color:var(--muted2)">סה"כ</td>
+      <td style="padding:12px 16px;">${sym}${Math.round(totalBudget).toLocaleString('he-IL')}</td>
+      <td style="padding:12px 16px;">${sym}${Math.round(totalSpend).toLocaleString('he-IL')}</td>
+      <td style="padding:12px 16px;"></td>
+      <td style="padding:12px 16px;">${totalDaily}</td>
+    </tr>`;
+  };
 
   document.getElementById('main').innerHTML = `
     <div class="client-header"><div class="client-title">${c.business_name}</div></div>
     <div class="date-filter">${dateButtons}</div>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">הוצאה כוללת</div><div class="kpi-val" style="color:var(--accent2)">${sym}${Math.round(ins.spend).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
-      <div class="kpi-card"><div class="kpi-label">לידים</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
-      <div class="kpi-card"><div class="kpi-label">עלות לליד</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">${label}</div></div>
+      <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
+      <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'cpl')}</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">קליקים</div><div class="kpi-val">${Math.round(ins.clicks).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
     </div>
     <div class="budget-section">${totalCard}${subCards}</div>
     <div class="chart-card">
-      <div class="chart-title" style="display:flex;justify-content:space-between;align-items:center;">   <span>📈 גרף ביצועים - ${label}</span>   <button onclick="toggleChart()" id="chart-toggle-btn" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;">הסתר</button> </div>
+      <div class="chart-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>📈 גרף ביצועים - ${label}</span>
+        <button onclick="toggleChart()" id="chart-toggle-btn" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;">הסתר</button>
+      </div>
       <div class="chart-wrap" id="chart-wrap"><canvas id="perf-chart"></canvas></div>
     </div>
     ${metaCamps.length?`<div class="section-title">📘 קמפיינים Meta</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th></tr></thead><tbody>${campTable(metaCamps)}</tbody></table></div>`:''}
@@ -507,7 +516,7 @@ function renderChart(c, from, to, sym) {
       labels: dates.map(d => d.slice(5)),
       datasets: [
         { label:'הוצאה ('+sym+')', data:dates.map(d=>dayMap[d].spend.toFixed(0)), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.3, fill:true, yAxisID:'y' },
-        { label:'עלות לליד ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
+        { label:goalLabel(c,'cpl')+' ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
       ]
     },
     options: {
@@ -522,6 +531,7 @@ function renderChart(c, from, to, sym) {
     }
   });
 }
+
 function toggleChart() {
   const wrap = document.getElementById('chart-wrap');
   const btn  = document.getElementById('chart-toggle-btn');
@@ -529,6 +539,7 @@ function toggleChart() {
   wrap.style.display = hidden ? 'block' : 'none';
   btn.textContent = hidden ? 'הסתר' : 'הצג';
 }
+
 function toggleBudgetEdit(platform) {
   const el = document.getElementById(`budget-${platform}-edit`);
   el.style.display = el.style.display==='none'?'block':'none';
