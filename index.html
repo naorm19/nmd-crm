@@ -59,9 +59,9 @@
   .budget-bar { height:4px; background:var(--surface3); border-radius:2px; overflow:visible; position:relative; }
   .budget-bar-fill { height:100%; border-radius:2px; transition:width 0.5s ease; }
   .budget-bar-pace { position:absolute; top:-2px; width:2px; height:8px; background:var(--muted2); border-radius:1px; }
-  .client-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+  .client-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:0; position:sticky; top:60px; z-index:91; background:var(--bg); padding:12px 0; }
   .client-title { font-size:24px; font-weight:800; }
-  .date-filter { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:24px; }
+  .date-filter { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:24px; position:sticky; top:60px; z-index:90; background:var(--bg); padding:12px 0; }
   .df-btn { padding:7px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid var(--border); background:var(--surface2); color:var(--muted2); font-family:'Heebo',sans-serif; transition:all 0.15s; }
   .df-btn:hover { color:var(--text); border-color:var(--accent); }
   .df-btn.active { background:var(--accent); color:white; border-color:var(--accent); }
