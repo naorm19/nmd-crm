@@ -196,6 +196,7 @@ function getDateRange(mode) {
   if (mode==='7d')        { const d=new Date(now); d.setDate(d.getDate()-6); return { from:fmt(d), to:today, label:'7 ימים' }; }
   if (mode==='30d')       { const d=new Date(now); d.setDate(d.getDate()-29); return { from:fmt(d), to:today, label:'30 ימים' }; }
   if (mode==='month')     { return { from:`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`, to:today, label:'החודש' }; }
+  if (mode==='custom' && customFrom && customTo) { return { from:customFrom, to:customTo, label:`${customFrom} עד ${customTo}` }; }
   return { from:today, to:today, label:'היום' };
 }
 
@@ -207,6 +208,27 @@ function getMonthRange() {
 
 let currentDateMode = 'today';
 let currentClientId = null;
+let customFrom = '';
+let customTo = '';
+
+function openCustomDate(clientId) {
+  currentDateMode = 'custom';
+  showClient(clientId, 'custom');
+  setTimeout(() => {
+    const picker = document.getElementById('custom-date-picker');
+    if (picker) picker.style.display = 'inline-flex';
+  }, 50);
+}
+
+function applyCustomDate(clientId) {
+  const f = document.getElementById('custom-from')?.value;
+  const t = document.getElementById('custom-to')?.value;
+  if (!f || !t) { showToast('בחר תאריך התחלה וסיום', 'red'); return; }
+  if (f > t) { showToast('תאריך התחלה חייב להיות לפני הסיום', 'red'); return; }
+  customFrom = f;
+  customTo = t;
+  showClient(clientId, 'custom');
+}
 
 function doLogin() {
   const inp = document.getElementById('login-input');
@@ -373,7 +395,14 @@ function showClient(clientId, dateMode) {
   const dateButtons = [
     {mode:'today',label:'היום'},{mode:'yesterday',label:'אתמול'},
     {mode:'7d',label:'7 ימים'},{mode:'30d',label:'30 ימים'},{mode:'month',label:'החודש'}
-  ].map(b => `<button class="df-btn ${currentDateMode===b.mode?'active':''}" onclick="showClient(${c.id},'${b.mode}')">${b.label}</button>`).join('');
+  ].map(b => `<button class="df-btn ${currentDateMode===b.mode?'active':''}" onclick="showClient(${c.id},'${b.mode}')">${b.label}</button>`).join('') +
+  `<button class="df-btn ${currentDateMode==='custom'?'active':''}" onclick="openCustomDate(${c.id})">📅 בחר תאריך</button>
+   <span id="custom-date-picker" style="display:${currentDateMode==='custom'?'inline-flex':'none'};gap:6px;align-items:center;margin-right:4px">
+     <input type="date" id="custom-from" value="${customFrom||''}" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-family:'Heebo',sans-serif;font-size:12px">
+     <span style="color:var(--muted);font-size:12px">עד</span>
+     <input type="date" id="custom-to" value="${customTo||''}" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-family:'Heebo',sans-serif;font-size:12px">
+     <button class="df-btn" onclick="applyCustomDate(${c.id})" style="background:var(--green);color:white">אישור</button>
+   </span>`;
 
   const totalCard = budgetTotal>0 ? `
     <div class="budget-total-card">
