@@ -250,7 +250,7 @@ async function loadData() {
   const pad = n => String(n).padStart(2,'0');
   const d30 = new Date(now); d30.setDate(d30.getDate()-29);
   const from = `${d30.getFullYear()}-${pad(d30.getMonth()+1)}-${pad(d30.getDate())}`;
-  allInsights = await supaFetch('daily_insights', `?date=gte.${from}&select=client_id,campaign_id,platform,spend,leads,conversions,clicks,date`);
+  allInsights = await supaFetch('daily_insights', `?date=gte.${from}&select=client_id,campaign_id,platform,spend,leads,conversions,clicks,conversion_value,date`);
   const campRows = await supaFetch('campaigns', `?select=id,client_id,campaign_name,platform,status,daily_budget,monthly_budget`);
   campaigns = {};
   campRows.forEach(c => {
@@ -264,11 +264,12 @@ function getInsightsForRange(clientId, from, to, platform=null) {
   return allInsights
     .filter(r => r.client_id===clientId && r.date>=from && r.date<=to && (!platform||r.platform===platform))
     .reduce((acc,r) => {
-      acc.spend  += parseFloat(r.spend||0);
-      acc.leads  += parseInt(r.leads||0) + parseInt(r.conversions||0);
-      acc.clicks += parseInt(r.clicks||0);
+      acc.spend            += parseFloat(r.spend||0);
+      acc.leads            += parseInt(r.leads||0) + parseInt(r.conversions||0);
+      acc.clicks           += parseInt(r.clicks||0);
+      acc.conversion_value += parseFloat(r.conversion_value||0);
       return acc;
-    }, { spend:0, leads:0, clicks:0 });
+    }, { spend:0, leads:0, clicks:0, conversion_value:0 });
 }
 
 function getCampMonthSpend(campId) {
@@ -461,9 +462,10 @@ function showClient(clientId, dateMode) {
 </div>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">הוצאה כוללת</div><div class="kpi-val" style="color:var(--accent2)">${sym}${Math.round(ins.spend).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
-      <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
+      <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}${c.goal_type==='sales'&&ins.conversion_value>0?' | '+sym+ins.conversion_value.toLocaleString('he-IL',{maximumFractionDigits:0}):''}</div></div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'cpl')}</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">קליקים</div><div class="kpi-val">${Math.round(ins.clicks).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
+      ${c.goal_type==='sales'&&ins.conversion_value>0?`<div class="kpi-card"><div class="kpi-label">ערך מכירות</div><div class="kpi-val" style="color:var(--green)">${sym}${ins.conversion_value.toLocaleString('he-IL',{maximumFractionDigits:0})}</div><div class="kpi-sub">${label} | ROAS ${ins.spend>0?(ins.conversion_value/ins.spend).toFixed(2):'0'}x</div></div>`:''}
     </div>
     <div class="budget-section">${totalCard}${subCards}</div>
     <div class="chart-card">
