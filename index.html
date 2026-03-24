@@ -245,7 +245,11 @@ async function supaPatch(path, params='', body={}) {
 let clients = [], allInsights = [], campaigns = {};
 
 async function loadData() {
-  clients = await supaFetch('clients', '?is_active=eq.true&order=business_name');
+  const allClients = await supaFetch('clients', '?is_active=eq.true&order=business_name');
+  // דני ספרים תמיד ראשון
+  const dani = allClients.find(c => c.business_name === 'דני ספרים');
+  const rest = allClients.filter(c => c.business_name !== 'דני ספרים');
+  clients = dani ? [dani, ...rest] : allClients;
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
   const d30 = new Date(now); d30.setDate(d30.getDate()-29);
@@ -464,7 +468,7 @@ function showClient(clientId, dateMode) {
       <div class="kpi-card"><div class="kpi-label">הוצאה כוללת</div><div class="kpi-val" style="color:var(--accent2)">${sym}${Math.round(ins.spend).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}${c.goal_type==='sales'&&ins.conversion_value>0?' | '+sym+ins.conversion_value.toLocaleString('he-IL',{maximumFractionDigits:0}):''}</div></div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'cpl')}</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">${label}</div></div>
-      <div class="kpi-card"><div class="kpi-label">קליקים</div><div class="kpi-val">${Math.round(ins.clicks).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
+
       ${c.goal_type==='sales'&&ins.conversion_value>0?`<div class="kpi-card"><div class="kpi-label">ערך מכירות</div><div class="kpi-val" style="color:var(--green)">${sym}${ins.conversion_value.toLocaleString('he-IL',{maximumFractionDigits:0})}</div><div class="kpi-sub">${label} | ROAS ${ins.spend>0?(ins.conversion_value/ins.spend).toFixed(2):'0'}x</div></div>`:''}
     </div>
     <div class="budget-section">${totalCard}${subCards}</div>
