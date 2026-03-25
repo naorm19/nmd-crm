@@ -143,6 +143,7 @@
   <div class="header-meta">
     <span id="last-sync">טוען...</span>
     <button class="sync-btn" onclick="init()">🔄 רענן</button>
+    <button class="sync-btn" onclick="runSync()" id="sync-now-btn">⚡ סנכרן עכשיו</button>
   </div>
 </div>
 
@@ -280,7 +281,7 @@ async function loadData() {
   const pad = n => String(n).padStart(2,'0');
   const d30 = new Date(now); d30.setDate(d30.getDate()-29);
   const from = `${d30.getFullYear()}-${pad(d30.getMonth()+1)}-${pad(d30.getDate())}`;
-  allInsights = await supaFetch('daily_insights', `?date=gte.${from}&select=client_id,campaign_id,platform,spend,leads,conversions,clicks,conversion_value,date`);
+  allInsights = await supaFetch('daily_insights', `?date=gte.${from}&select=client_id,campaign_id,platform,spend,leads,conversions,clicks,conversion_value,date&limit=5000`);
   const campRows = await supaFetch('campaigns', `?select=id,client_id,campaign_name,platform,status,daily_budget,monthly_budget`);
   campaigns = {};
   campRows.forEach(c => {
@@ -314,10 +315,11 @@ function getInsightsByDay(clientId, from, to) {
   allInsights
     .filter(r => r.client_id===clientId && r.date>=from && r.date<=to)
     .forEach(r => {
-      if (!map[r.date]) map[r.date] = { spend:0, leads:0, clicks:0 };
-      map[r.date].spend  += parseFloat(r.spend||0);
-      map[r.date].leads  += parseInt(r.leads||0) + parseInt(r.conversions||0);
-      map[r.date].clicks += parseInt(r.clicks||0);
+      if (!map[r.date]) map[r.date] = { spend:0, leads:0, clicks:0, conversion_value:0 };
+      map[r.date].spend            += parseFloat(r.spend||0);
+      map[r.date].leads            += parseInt(r.leads||0) + parseInt(r.conversions||0);
+      map[r.date].clicks           += parseInt(r.clicks||0);
+      map[r.date].conversion_value += parseFloat(r.conversion_value||0);
     });
   return map;
 }
@@ -534,7 +536,8 @@ function renderChart(c, from, to, sym) {
       labels: dates.map(d => d.slice(5)),
       datasets: [
         { label:'הוצאה ('+sym+')', data:dates.map(d=>dayMap[d].spend.toFixed(0)), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.3, fill:true, yAxisID:'y' },
-        { label:goalLabel(c,'cpl')+' ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
+        { label:goalLabel(c,'cpl')+' ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true },
+        ...(c.goal_type==='sales' ? [{ label:'ערך מכירות ('+sym+')', data:dates.map(d=>(dayMap[d].conversion_value||0).toFixed(0)), borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.1)', tension:0.3, fill:false, yAxisID:'y', spanGaps:true }] : [])
       ]
     },
     options: {
@@ -718,6 +721,27 @@ function showToast(msg, color='green') {
   t.style.background = color==='red'?'var(--red)':'var(--green)';
   t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 3000);
+}
+
+async function runSync() {
+  const btn = document.getElementById('sync-now-btn');
+  btn.textContent = '⏳ מסנכרן...';
+  btn.disabled = true;
+  try {
+    // קרא ל-webhook-server המקומי (port 3001)
+    const res = await fetch('http://localhost:3001/sync', { method: 'POST' });
+    if (res.ok) {
+      showToast('✅ סנכרון הושלם!');
+      await init();
+    } else {
+      showToast('❌ שגיאת סנכרון', 'red');
+    }
+  } catch(e) {
+    showToast('❌ אין חיבור לשרת', 'red');
+  } finally {
+    btn.textContent = '⚡ סנכרן עכשיו';
+    btn.disabled = false;
+  }
 }
 
 async function init() {
