@@ -271,12 +271,12 @@ async function supaPatch(path, params='', body={}) {
 let clients = [], allInsights = [], campaigns = {};
 
 async function loadData() {
-  const allClients = await supaFetch('clients', '?is_active=eq.true&order=business_name');
-  // דני ספרים תמיד ראשון
-  const dani  = allClients.find(c => c.business_name === 'דני ספרים');
-  const asif  = allClients.find(c => c.business_name === 'אסיף מארקט');
-  const rest  = allClients.filter(c => c.business_name !== 'דני ספרים' && c.business_name !== 'אסיף מארקט');
-  clients = [dani, asif, ...rest].filter(Boolean);
+  const allClients = await supaFetch('clients', '?is_active=eq.true');
+  const order = ['דני ספרים', 'אסיף', 'מקור השפע', 'The Ductors', 'בורקס אמא', 'שחר אהרוני', 'קאסה קליניק'];
+  clients = [
+    ...order.map(name => allClients.find(c => c.business_name === name)).filter(Boolean),
+    ...allClients.filter(c => !order.includes(c.business_name))
+  ];
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
   const d30 = new Date(now); d30.setDate(d30.getDate()-29);
@@ -377,7 +377,7 @@ function renderOverview() {
   }).join('') + '</div>';
 }
 
-function showClient(clientId, dateMode) {
+async function showClient(clientId, dateMode) {
   if (dateMode) currentDateMode = dateMode;
   currentClientId = clientId;
   const c = clients.find(x => x.id===clientId);
@@ -505,6 +505,24 @@ function showClient(clientId, dateMode) {
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'cpl')}</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">${label}</div></div>
 
       ${c.goal_type==='sales'&&ins.conversion_value>0?`<div class="kpi-card"><div class="kpi-label">ערך מכירות</div><div class="kpi-val" style="color:var(--green)">${sym}${ins.conversion_value.toLocaleString('he-IL',{maximumFractionDigits:0})}</div><div class="kpi-sub">${label} | ROAS ${ins.spend>0?(ins.conversion_value/ins.spend).toFixed(2):'0'}x</div></div>`:''}
+      ${c.business_name === 'מקור השפע' ? `
+        <div class="kpi-card" id="new-customers-card">
+          <div class="kpi-label">לקוחות חדשים החודש</div>
+          <div class="kpi-val" style="color:var(--green)" id="new-customers-val">-</div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <input id="new-customers-input" type="number" min="0" step="1" placeholder="0"
+              style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;font-family:'Heebo',sans-serif;outline:none;">
+            <button class="camp-save-btn" style="padding:8px 12px" onclick="saveNewCustomersInline(${c.id})">✓</button>
+          </div>
+          <div style="margin-top:14px;font-size:12px;color:var(--muted2)">לקוחות חדשים חודש שעבר</div>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <input id="last-month-customers-input" type="number" min="0" step="1" placeholder="0"
+              style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;font-family:'Heebo',sans-serif;outline:none;">
+            <button class="camp-save-btn" style="padding:8px 12px" onclick="saveLastMonthCustomers(${c.id})">✓</button>
+          </div>
+          <div id="customers-progress" style="margin-top:10px;font-size:11px;color:var(--muted2)"></div>
+        </div>
+      ` : ''}
     </div>
     <div class="budget-section">${totalCard}${subCards}</div>
     <div class="chart-card">
@@ -521,6 +539,7 @@ function showClient(clientId, dateMode) {
   renderChart(c, from, to, sym);
   if (c.business_name === 'The Ductors') renderLeaderTable(c, sym, from, to, label);
   if (c.business_name === 'אסיף מארקט') renderAsifNewCustomers(c.id, from, to, label, sym);
+  if (c.business_name === 'מקור השפע') await loadNewCustomersInline(c.id);
 }
 
 function renderChart(c, from, to, sym) {
@@ -609,6 +628,102 @@ async function renderLeaderTable(c, sym, filterFrom, filterTo, label) {
       </table></div>`;
     document.getElementById('main').appendChild(container);
   } catch(e) { console.error('Leader fetch error:', e); }
+}
+
+async function loadNewCustomersInline(clientId) {
+  const valEl      = document.getElementById('new-customers-val');
+  const inputEl    = document.getElementById('new-customers-input');
+  const lastInputEl= document.getElementById('last-month-customers-input');
+  const progressEl = document.getElementById('customers-progress');
+  if (!valEl || !inputEl) return;
+
+  const now = new Date();
+  const currDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const lm = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const lastDate = `${lm.getFullYear()}-${String(lm.getMonth()+1).padStart(2,'0')}-01`;
+
+  try {
+    const [currRows, lastRows] = await Promise.all([
+      supaFetch('new_customers', `?client_id=eq.${clientId}&date=eq.${currDate}&select=count`),
+      supaFetch('new_customers', `?client_id=eq.${clientId}&date=eq.${lastDate}&select=count`)
+    ]);
+    const currCount = currRows?.[0]?.count ? Number(currRows[0].count) : 0;
+    const lastCount = lastRows?.[0]?.count ? Number(lastRows[0].count) : 0;
+
+    valEl.textContent = String(currCount);
+    inputEl.value = currCount > 0 ? String(currCount) : '';
+    if (lastInputEl) lastInputEl.value = lastCount > 0 ? String(lastCount) : '';
+
+    if (progressEl) {
+      if (lastCount > 0) {
+        const pct = Math.round((currCount / lastCount) * 100);
+        const color = pct >= 100 ? 'var(--green)' : pct >= 70 ? 'var(--yellow)' : 'var(--red)';
+        progressEl.innerHTML = `התקדמות: <span style="color:${color};font-weight:700">${pct}%</span> לעומת חודש שעבר`;
+      } else {
+        progressEl.textContent = '';
+      }
+    }
+  } catch(e) {
+    console.warn('new_customers fetch failed:', e?.message || e);
+    valEl.textContent = '-';
+  }
+}
+
+async function saveNewCustomersInline(clientId) {
+  const input = document.getElementById('new-customers-input');
+  const val = input ? Number(input.value) : 0;
+  if (isNaN(val) || val < 0) { showToast('כמות לא תקינה', 'red'); return; }
+
+  const now = new Date();
+  const date = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/new_customers`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': `Bearer ${SUPA_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=representation'
+      },
+      body: JSON.stringify({ client_id: clientId, date, count: Math.floor(val) })
+    });
+    if (!res.ok) throw new Error(`Supabase upsert failed: ${res.status}`);
+    showToast('✅ לקוחות חדשים נשמרו!');
+    await loadNewCustomersInline(clientId);
+  } catch(e) {
+    console.error('saveNewCustomersInline error:', e);
+    showToast('❌ לא הצליח לשמור', 'red');
+  }
+}
+
+async function saveLastMonthCustomers(clientId) {
+  const input = document.getElementById('last-month-customers-input');
+  const val = input ? Number(input.value) : 0;
+  if (isNaN(val) || val < 0) { showToast('כמות לא תקינה', 'red'); return; }
+
+  const now = new Date();
+  const lm = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const date = `${lm.getFullYear()}-${String(lm.getMonth()+1).padStart(2,'0')}-01`;
+
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/new_customers`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': `Bearer ${SUPA_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=representation'
+      },
+      body: JSON.stringify({ client_id: clientId, date, count: Math.floor(val) })
+    });
+    if (!res.ok) throw new Error(`Supabase upsert failed: ${res.status}`);
+    showToast('✅ חודש שעבר נשמר!');
+    await loadNewCustomersInline(clientId);
+  } catch(e) {
+    console.error('saveLastMonthCustomers error:', e);
+    showToast('❌ לא הצליח לשמור', 'red');
+  }
 }
 
 // ── אסיף - לקוחות חדשים מגיליון ────────────────────────────
