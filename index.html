@@ -537,7 +537,7 @@ async function showClient(clientId, dateMode) {
   `;
 
   renderChart(c, from, to, sym);
-  if (c.business_name === 'The Ductors') renderLeaderTable(c, sym, from, to, label);
+  if (c.business_name === 'The Ductors') { renderLeaderTable(c, sym, from, to, label); renderWorkizSources(c.id, from, to, label); }
   if (c.business_name === 'אסיף מארקט') renderAsifNewCustomers(c.id, from, to, label, sym);
   if (c.business_name === 'מקור השפע') await loadNewCustomersInline(c.id);
 }
@@ -628,6 +628,97 @@ async function renderLeaderTable(c, sym, filterFrom, filterTo, label) {
       </table></div>`;
     document.getElementById('main').appendChild(container);
   } catch(e) { console.error('Leader fetch error:', e); }
+}
+
+async function renderWorkizSources(clientId, from, to, label) {
+  try {
+    const rows = await supaFetch('workiz_leads_by_source',
+      `?client_id=eq.${clientId}&date=gte.${from}&date=lte.${to}&order=date.desc`);
+
+    if (!rows || rows.length === 0) {
+      const el = document.createElement('div');
+      el.innerHTML = `<div class="section-title">📞 לידים לפי מקור (Workiz) - ${label}</div>
+        <div class="empty">אין נתוני Workiz לטווח זה. הסקריפט רץ כל שעה ומעדכן אוטומטית.</div>`;
+      document.getElementById('main').appendChild(el);
+      return;
+    }
+
+    // Aggregate by source
+    const map = {};
+    rows.forEach(r => {
+      if (!map[r.source]) map[r.source] = { all:0, done:0, open:0, canceled:0 };
+      map[r.source].all      += r.all_jobs      || 0;
+      map[r.source].done     += r.done_jobs     || 0;
+      map[r.source].open     += r.open_jobs     || 0;
+      map[r.source].canceled += r.canceled_jobs || 0;
+    });
+
+    const total = Object.values(map).reduce((s,v)=>s+v.all,0);
+    const SOURCE_COLORS = { Facebook:'#3b82f6', Google:'#ef4444', 'Third party':'#10b981', Thumbtack:'#f59e0b', unknown:'#64748b', 'word to mouth':'#a78bfa' };
+    const colorOf = s => SOURCE_COLORS[s] || '#60a5fa';
+
+    const tableRows = Object.entries(map)
+      .sort((a,b) => b[1].all - a[1].all)
+      .map(([src,v]) => {
+        const pct = total > 0 ? Math.round(v.all/total*100) : 0;
+        const clr = colorOf(src);
+        return `<tr>
+          <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${clr};margin-left:6px"></span>${src}</td>
+          <td style="font-weight:700">${v.all}</td>
+          <td style="color:var(--green)">${v.done}</td>
+          <td style="color:var(--accent2)">${v.open}</td>
+          <td style="color:var(--red)">${v.canceled}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:6px">
+              <div style="flex:1;height:6px;background:var(--surface3);border-radius:3px;min-width:80px">
+                <div style="width:${pct}%;height:100%;background:${clr};border-radius:3px"></div>
+              </div>
+              <span style="font-size:11px;color:var(--muted);min-width:28px">${pct}%</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+
+    // Chart
+    const chartId = 'workiz-chart-' + Date.now();
+    const container = document.createElement('div');
+    container.innerHTML = `
+      <div class="section-title">📞 לידים לפי מקור (Workiz) - ${label}</div>
+      <div style="display:grid;grid-template-columns:1fr 240px;gap:16px;margin-bottom:24px;align-items:start">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>מקור</th><th>סה"כ</th><th>בוצע</th><th>פתוח</th><th>בוטל</th><th>חלוקה</th></tr></thead>
+            <tbody>
+              ${tableRows}
+              <tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
+                <td>סה"כ</td><td>${total}</td>
+                <td>${Object.values(map).reduce((s,v)=>s+v.done,0)}</td>
+                <td>${Object.values(map).reduce((s,v)=>s+v.open,0)}</td>
+                <td>${Object.values(map).reduce((s,v)=>s+v.canceled,0)}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="chart-card" style="padding:16px">
+          <div style="position:relative;height:200px"><canvas id="${chartId}"></canvas></div>
+        </div>
+      </div>`;
+    document.getElementById('main').appendChild(container);
+
+    // Draw pie chart
+    const ctx = document.getElementById(chartId).getContext('2d');
+    const labels = Object.keys(map).sort((a,b)=>map[b].all-map[a].all);
+    new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{ data: labels.map(l=>map[l].all), backgroundColor: labels.map(colorOf), borderWidth:0 }]
+      },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ color:'#94a3b8', font:{size:11}, boxWidth:12 }}}}
+    });
+
+  } catch(e) { console.error('Workiz sources error:', e); }
 }
 
 async function loadNewCustomersInline(clientId) {
