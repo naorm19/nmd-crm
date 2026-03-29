@@ -601,7 +601,14 @@ async function renderDuctorsChart(c, from, to, sym) {
   // Fetch daily leader_summary rows for date range
   const leaderRows = await supaFetch('leader_summary',
     `?select=date,received,closed&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}&order=date.asc`);
-  if (!leaderRows || !Array.isArray(leaderRows) || !leaderRows.length) return;
+
+  console.log('[DuctorsChart] Leader Data for Chart:', leaderRows);
+
+  if (!leaderRows || !Array.isArray(leaderRows) || !leaderRows.length) {
+    // Fallback to standard insights chart if no leader data for range
+    renderChart(c, from, to, sym);
+    return;
+  }
 
   // Aggregate per day (sum all sources)
   const dayMap = {};
@@ -615,9 +622,13 @@ async function renderDuctorsChart(c, from, to, sym) {
   allInsights.filter(r => r.client_id===c.id && r.date>=from && r.date<=to)
     .forEach(r => {
       if (dayMap[r.date]) dayMap[r.date].spend += parseFloat(r.spend||0);
+      else dayMap[r.date] = { received:0, closed:0, spend: parseFloat(r.spend||0) };
     });
 
   const dates = Object.keys(dayMap).sort();
+  console.log('[DuctorsChart] Days with data:', dates.length,
+    '| Total received:', dates.reduce((s,d)=>s+dayMap[d].received,0),
+    '| Total closed:', dates.reduce((s,d)=>s+dayMap[d].closed,0));
 
   chartInstance = new Chart(ctx, {
     type: 'bar',
@@ -626,9 +637,18 @@ async function renderDuctorsChart(c, from, to, sym) {
       datasets: [
         {
           type: 'bar',
+          label: 'לידים שהגיעו',
+          data: dates.map(d => dayMap[d].received),
+          backgroundColor: 'rgba(59,130,246,0.5)',
+          borderColor: '#3b82f6',
+          borderWidth: 1,
+          yAxisID: 'yCount'
+        },
+        {
+          type: 'bar',
           label: 'סגירות',
           data: dates.map(d => dayMap[d].closed),
-          backgroundColor: 'rgba(16,185,129,0.7)',
+          backgroundColor: 'rgba(16,185,129,0.8)',
           borderColor: '#10b981',
           borderWidth: 1,
           yAxisID: 'yCount'
@@ -667,12 +687,13 @@ async function renderDuctorsChart(c, from, to, sym) {
       plugins: { legend: { labels: { color:'#94a3b8', font:{ family:'Heebo', size:12 } } } },
       scales: {
         x:      { ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
-        yCount: { type:'linear', position:'left',  ticks:{ color:'#10b981', stepSize:1 }, grid:{ color:'#1e2d45' },
-                  title:{ display:true, text:'סגירות', color:'#10b981', font:{ family:'Heebo' } } },
-        yPct:   { type:'linear', position:'right', ticks:{ color:'#f59e0b', callback:v=>v+'%' }, grid:{ drawOnChartArea:false },
+        yCount: { type:'linear', position:'left', ticks:{ color:'#60a5fa', stepSize:1 }, grid:{ color:'#1e2d45' },
+                  title:{ display:true, text:'לידים', color:'#60a5fa', font:{ family:'Heebo' } } },
+        yPct:   { type:'linear', position:'right', min:0, max:100,
+                  ticks:{ color:'#f59e0b', callback:v=>v+'%' }, grid:{ drawOnChartArea:false },
                   title:{ display:true, text:'% סגירה', color:'#f59e0b', font:{ family:'Heebo' } } },
-        yCost:  { type:'linear', position:'right', ticks:{ color:'#a78bfa', callback:v=>sym+v }, grid:{ drawOnChartArea:false },
-                  title:{ display:true, text:'עלות לסגירה', color:'#a78bfa', font:{ family:'Heebo' } }, display: false }
+        yCost:  { type:'linear', position:'right', display:false,
+                  ticks:{ color:'#a78bfa', callback:v=>sym+v }, grid:{ drawOnChartArea:false } }
       }
     }
   });
