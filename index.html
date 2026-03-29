@@ -646,158 +646,113 @@ async function renderLeaderTable(c, sym, filterFrom, filterTo, label) {
 }
 
 async function renderMasterConversionTable(client, from, to, sym, label) {
-  const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT0ItiZNLkWNI3pLY9URnnnzKs880m2o5T3SYIfhbt23iL2ln0T627u8hkyU1wO4CQIRUQ32oyWSbcz/pub?gid=21240070&single=true&output=csv';
   const clientId = client.id;
-
-  // Always get the container first — guaranteed to exist from showClient template
   const masterEl = document.getElementById('master-conv-container');
   if (!masterEl) return;
-
-  const setError = (msg) => {
-    masterEl.innerHTML = `<div style="padding:20px;color:var(--muted);text-align:center;font-size:13px">⚠️ ${msg}</div>`;
-  };
+  const setErr = msg => { masterEl.innerHTML = `<div style="padding:20px;color:var(--muted);text-align:center;font-size:13px">⚠️ ${msg}</div>`; };
 
   try {
-    // --- Fetch CSV ---
-    let res;
-    try { res = await fetch(CSV_URL); } catch(fetchErr) {
-      console.error('[MasterTable] fetch failed:', fetchErr);
-      setError('לא ניתן לטעון נתוני Leader. בדוק חיבור רשת.');
-      return;
-    }
-    if (!res.ok) {
-      console.error('[MasterTable] CSV response not ok:', res.status);
-      setError('שגיאה בטעינת CSV: ' + res.status);
-      return;
-    }
-    const text = await res.text();
-    console.log('[MasterTable] CSV fetched, length:', text.length, 'from:', from, 'to:', to);
+    // ── Fetch from Supabase leader_summary ───────────────────────────────
+    const rows = await supaFetch('leader_summary',
+      `?client_id=eq.${clientId}&date=gte.${from}&date=lte.${to}&select=source,received,closed,not_relevant,no_answer`);
 
-    // --- Parse CSV (cols: 0=תאריך, 3=סטטוס, 4=מקור) ---
-    const CLOSED_ST     = ['closed','נסגר','done','completed','booked','job created'];
-    const NOREPLY_ST    = ['אין מענה','no answer','no response','no reply'];
-    const IRRELEVANT_ST = ['לא רלוונטי','not relevant','irrelevant'];
+    if (!rows) { setErr('שגיאה בטעינה מ-Supabase'); return; }
 
+    // ── Aggregate by source ──────────────────────────────────────────────
     const map = {
-      Google:   { total:0, closed:0, noReply:0, irrelevant:0 },
-      Facebook: { total:0, closed:0, noReply:0, irrelevant:0 }
+      Google:   { received:0, closed:0, not_relevant:0, no_answer:0 },
+      Facebook: { received:0, closed:0, not_relevant:0, no_answer:0 }
     };
-
-    const lines = text.split(/\r?\n/).slice(1); // skip header
-    lines.forEach(line => {
-      if (!line.trim()) return;
-      // simple split — quoted cells with commas handled by taking first 5 cols only
-      const firstCommas = [];
-      let idx = 0;
-      for (let n = 0; n < 5; n++) {
-        const next = line.indexOf(',', idx);
-        if (next === -1) break;
-        firstCommas.push(line.substring(idx, next));
-        idx = next + 1;
-      }
-      firstCommas.push(line.substring(idx)); // col 5+
-
-      const rawDate = (firstCommas[0]||'').trim().substring(0, 10);
-      if (!rawDate) return;
-      if (rawDate < from || rawDate > to) return;
-
-      const src = (firstCommas[4]||'').replace(/"/g,'').trim();
-      if (src !== 'Google' && src !== 'Facebook') return;
-
-      const st = (firstCommas[3]||'').replace(/"/g,'').trim().toLowerCase();
-      map[src].total++;
-      if (CLOSED_ST.some(s     => st.includes(s))) map[src].closed++;
-      if (NOREPLY_ST.some(s    => st.includes(s))) map[src].noReply++;
-      if (IRRELEVANT_ST.some(s => st.includes(s))) map[src].irrelevant++;
+    rows.forEach(r => {
+      const src = r.source === 'Facebook' ? 'Facebook' : r.source === 'Google' ? 'Google' : null;
+      if (!src) return;
+      map[src].received     += r.received     || 0;
+      map[src].closed       += r.closed       || 0;
+      map[src].not_relevant += r.not_relevant || 0;
+      map[src].no_answer    += r.no_answer    || 0;
     });
 
-    console.log('[MasterTable] CSV map:', JSON.stringify(map));
-
-    // --- daily_insights aggregation ---
+    // ── daily_insights aggregation ───────────────────────────────────────
     const inRange = r => r.client_id === clientId && r.date >= from && r.date <= to;
     const platData = {
       Google: allInsights.filter(r => inRange(r) && r.platform === 'google').reduce(
         (a, r) => ({ spend: a.spend + parseFloat(r.spend||0), leads: a.leads + parseInt(r.leads||0) + parseInt(r.conversions||0) }),
-        { spend: 0, leads: 0 }
+        { spend:0, leads:0 }
       ),
       Facebook: allInsights.filter(r => inRange(r) && r.platform === 'facebook').reduce(
         (a, r) => ({ spend: a.spend + parseFloat(r.spend||0), leads: a.leads + parseInt(r.leads||0) + parseInt(r.conversions||0) }),
-        { spend: 0, leads: 0 }
+        { spend:0, leads:0 }
       )
     };
 
-    console.log('[MasterTable] platData:', JSON.stringify(platData));
-
-    // --- Formatters ---
+    // ── Formatters ───────────────────────────────────────────────────────
     const fmtMoney = v       => v > 0 ? sym + Math.round(v).toLocaleString('he-IL') : '-';
     const fmtRate  = (cl, t) => t > 0 && cl > 0 ? Math.round(cl / t * 100) + '%' : '-';
     const fmtClose = (sp,cl) => cl > 0 && sp > 0 ? sym + Math.round(sp / cl) : '-';
-    const fmtSt    = (nr,ir) => {
+    const fmtSt    = (nr,na) => {
       const p = [];
-      if (nr > 0) p.push('אין מענה: ' + nr);
-      if (ir > 0) p.push('לא רלוונטי: ' + ir);
+      if (na > 0) p.push('אין מענה: ' + na);
+      if (nr > 0) p.push('לא רלוונטי: ' + nr);
       return p.length ? p.join(' | ') : '-';
     };
 
-    const CLR     = { Google: '#ef4444', Facebook: '#3b82f6' };
-    const DISPLAY = { Google: 'Google',  Facebook: 'Meta' };
+    const CLR     = { Google:'#ef4444', Facebook:'#3b82f6' };
+    const DISPLAY = { Google:'Google',  Facebook:'Meta' };
 
-    const tableRows = ['Google', 'Facebook'].map(src => {
+    const tableRows = ['Google','Facebook'].map(src => {
       const d  = map[src];
       const pd = platData[src];
       return `<tr>
         <td style="font-weight:700"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CLR[src]};margin-left:6px;vertical-align:middle"></span>${DISPLAY[src]}</td>
         <td style="text-align:center;color:var(--accent2);font-weight:700">${fmtMoney(pd.spend)}</td>
         <td style="text-align:center;color:var(--green)">${pd.leads > 0 ? pd.leads : '-'}</td>
-        <td style="text-align:center;font-weight:700">${d.total > 0 ? d.total : '-'}</td>
-        <td style="text-align:center;color:var(--green)">${fmtRate(d.closed, d.total)}</td>
-        <td style="text-align:center;font-size:11px;color:var(--muted2)">${fmtSt(d.noReply, d.irrelevant)}</td>
-        <td style="text-align:center;color:var(--yellow);font-weight:700">${fmtClose(pd.spend, d.total)}</td>
+        <td style="text-align:center;font-weight:700">${d.received > 0 ? d.received : '-'}</td>
+        <td style="text-align:center;color:var(--green)">${fmtRate(d.closed, d.received)}</td>
+        <td style="text-align:center;font-size:11px;color:var(--muted2)">${fmtSt(d.not_relevant, d.no_answer)}</td>
+        <td style="text-align:center;color:var(--yellow);font-weight:700">${fmtClose(pd.spend, d.received)}</td>
       </tr>`;
     }).join('');
 
     const tot = {
-      spend:     platData.Google.spend  + platData.Facebook.spend,
-      platLeads: platData.Google.leads  + platData.Facebook.leads,
-      csvTotal:  map.Google.total       + map.Facebook.total,
-      closed:    map.Google.closed      + map.Facebook.closed,
-      noReply:   map.Google.noReply     + map.Facebook.noReply,
-      irrelevant:map.Google.irrelevant  + map.Facebook.irrelevant
+      spend:    platData.Google.spend + platData.Facebook.spend,
+      platLeads:platData.Google.leads + platData.Facebook.leads,
+      received: map.Google.received   + map.Facebook.received,
+      closed:   map.Google.closed     + map.Facebook.closed,
+      nr:       map.Google.not_relevant + map.Facebook.not_relevant,
+      na:       map.Google.no_answer    + map.Facebook.no_answer
     };
 
     masterEl.innerHTML = `
       <div class="section-title">🎯 Master Conversion Table - ${label}</div>
       <div class="table-wrap" style="margin-bottom:32px">
         <table>
-          <thead>
-            <tr>
-              <th>מקור</th>
-              <th style="text-align:center">הוצאה</th>
-              <th style="text-align:center">לידים (פלטפורמה)</th>
-              <th style="text-align:center">לידים (Leader)</th>
-              <th style="text-align:center">אחוז סגירה</th>
-              <th style="text-align:center">סטטוסים</th>
-              <th style="text-align:center">עלות סופית לסגירה</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th>מקור</th>
+            <th style="text-align:center">הוצאה</th>
+            <th style="text-align:center">לידים (פלטפורמה)</th>
+            <th style="text-align:center">לידים (Leader)</th>
+            <th style="text-align:center">אחוז סגירה</th>
+            <th style="text-align:center">סטטוסים</th>
+            <th style="text-align:center">עלות סופית לסגירה</th>
+          </tr></thead>
           <tbody>
             ${tableRows}
             <tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
               <td>סה"כ</td>
               <td style="text-align:center;color:var(--accent2)">${fmtMoney(tot.spend)}</td>
               <td style="text-align:center;color:var(--green)">${tot.platLeads > 0 ? tot.platLeads : '-'}</td>
-              <td style="text-align:center">${tot.csvTotal > 0 ? tot.csvTotal : '-'}</td>
-              <td style="text-align:center;color:var(--green)">${fmtRate(tot.closed, tot.csvTotal)}</td>
-              <td style="text-align:center;font-size:11px;color:var(--muted2)">${fmtSt(tot.noReply, tot.irrelevant)}</td>
-              <td style="text-align:center;color:var(--yellow)">${fmtClose(tot.spend, tot.csvTotal)}</td>
+              <td style="text-align:center">${tot.received > 0 ? tot.received : '-'}</td>
+              <td style="text-align:center;color:var(--green)">${fmtRate(tot.closed, tot.received)}</td>
+              <td style="text-align:center;font-size:11px;color:var(--muted2)">${fmtSt(tot.nr, tot.na)}</td>
+              <td style="text-align:center;color:var(--yellow)">${fmtClose(tot.spend, tot.received)}</td>
             </tr>
           </tbody>
         </table>
       </div>`;
 
   } catch(e) {
-    console.error('[MasterTable] unexpected error:', e);
-    setError('שגיאה בלתי צפויה: ' + e.message);
+    console.error('[MasterTable] error:', e);
+    setErr('שגיאה: ' + e.message);
   }
 }
 
