@@ -211,8 +211,9 @@ function getMonthRange() {
   return { from:`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`, to:now.toISOString().split('T')[0] };
 }
 
-let currentDateMode = 'yesterday';
-let currentClientId = null;
+let currentDateMode    = 'yesterday';
+let currentClientId   = null;
+let ductorsSourceFilter = 'all'; // 'all' | 'google' | 'facebook'
 let customFrom = '';
 let customTo = '';
 
@@ -543,7 +544,10 @@ async function showClient(clientId, dateMode) {
     <div class="chart-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;">📈 גרף ביצועים - ${label}</span>
-        <button onclick="toggleChart()" id="chart-toggle-btn" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;">הסתר</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${c.business_name==='The Ductors'?`<div id="ductors-src-filter"></div>`:''}
+          <button onclick="toggleChart()" id="chart-toggle-btn" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;">הסתר</button>
+        </div>
       </div>
       <div class="chart-wrap" id="chart-wrap"><canvas id="perf-chart"></canvas></div>
     </div>
@@ -598,19 +602,44 @@ async function renderDuctorsChart(c, from, to, sym) {
   const ctx = document.getElementById('perf-chart')?.getContext('2d');
   if (!ctx) return;
 
-  // Fetch daily leader_summary rows for date range
-  const leaderRows = await supaFetch('leader_summary',
-    `?select=date,received,closed&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}&order=date.asc`);
-
-  console.log('[DuctorsChart] Leader Data for Chart:', leaderRows);
-
-  if (!leaderRows || !Array.isArray(leaderRows) || !leaderRows.length) {
-    // Fallback to standard insights chart if no leader data for range
-    renderChart(c, from, to, sym);
-    return;
+  // ── Source filter dropdown ─────────────────────────────────────────────
+  const filterEl = document.getElementById('ductors-src-filter');
+  if (filterEl && !filterEl.querySelector('select')) {
+    filterEl.innerHTML = `<select id="ductors-src-sel"
+      style="background:var(--surface2);border:1px solid var(--border);color:var(--text);
+             padding:4px 10px;border-radius:6px;font-family:'Heebo',sans-serif;font-size:12px;
+             cursor:pointer;outline:none;">
+      <option value="all">כל המקורות</option>
+      <option value="google">Google</option>
+      <option value="facebook">Meta</option>
+    </select>`;
+    document.getElementById('ductors-src-sel').value = ductorsSourceFilter;
+    document.getElementById('ductors-src-sel').addEventListener('change', function() {
+      ductorsSourceFilter = this.value;
+      const cl = clients.find(x => x.id === c.id);
+      const { from: f, to: t, label: lb } = getDateRange(currentDateMode);
+      renderDuctorsChart(cl, f, t, cur(cl));
+      renderMasterConversionTable(cl, f, t, cur(cl), lb);
+    });
+  } else if (filterEl) {
+    const sel = document.getElementById('ductors-src-sel');
+    if (sel) sel.value = ductorsSourceFilter;
   }
 
-  // Aggregate per day (sum all sources)
+  // ── Build Supabase query with optional source filter ──────────────────
+  const srcFilter = ductorsSourceFilter === 'google'   ? '&source=eq.Google'
+                  : ductorsSourceFilter === 'facebook' ? '&source=eq.Facebook' : '';
+
+  const leaderRows = await supaFetch('leader_summary',
+    `?select=date,source,received,closed&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}${srcFilter}&order=date.asc`);
+
+  console.log('[DuctorsChart] rows:', leaderRows?.length, '| source:', ductorsSourceFilter, '| from:', from, 'to:', to);
+
+  if (!leaderRows || !Array.isArray(leaderRows) || !leaderRows.length) {
+    renderChart(c, from, to, sym); return;
+  }
+
+  // ── Aggregate per day ─────────────────────────────────────────────────
   const dayMap = {};
   leaderRows.forEach(r => {
     if (!dayMap[r.date]) dayMap[r.date] = { received:0, closed:0, spend:0 };
@@ -618,80 +647,87 @@ async function renderDuctorsChart(c, from, to, sym) {
     dayMap[r.date].closed   += r.closed   || 0;
   });
 
-  // Add spend from allInsights (Google + Meta combined)
-  allInsights.filter(r => r.client_id===c.id && r.date>=from && r.date<=to)
+  // Add spend from allInsights (filter by platform if source filtered)
+  const platFilter = ductorsSourceFilter === 'google'   ? r => r.platform==='google'
+                   : ductorsSourceFilter === 'facebook' ? r => r.platform==='facebook'
+                   : () => true;
+  allInsights
+    .filter(r => r.client_id===c.id && r.date>=from && r.date<=to && platFilter(r))
     .forEach(r => {
       if (dayMap[r.date]) dayMap[r.date].spend += parseFloat(r.spend||0);
-      else dayMap[r.date] = { received:0, closed:0, spend: parseFloat(r.spend||0) };
+      else                dayMap[r.date] = { received:0, closed:0, spend: parseFloat(r.spend||0) };
     });
 
   const dates = Object.keys(dayMap).sort();
-  console.log('[DuctorsChart] Days with data:', dates.length,
-    '| Total received:', dates.reduce((s,d)=>s+dayMap[d].received,0),
-    '| Total closed:', dates.reduce((s,d)=>s+dayMap[d].closed,0));
+
+  // ── Line datasets ────────────────────────────────────────────────────
+  const dsReceived = {
+    label: 'לידים שנסגרו',
+    data: dates.map(d => dayMap[d].received),
+    borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.12)',
+    borderWidth: 2.5, tension: 0.4, fill: true,
+    pointBackgroundColor: '#3b82f6', pointRadius: 3, spanGaps: true,
+    yAxisID: 'yCount'
+  };
+  const dsClosed = {
+    label: 'סגירות',
+    data: dates.map(d => dayMap[d].closed),
+    borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.10)',
+    borderWidth: 2.5, tension: 0.4, fill: false,
+    pointBackgroundColor: '#10b981', pointRadius: 3, spanGaps: true,
+    yAxisID: 'yCount'
+  };
+  const dsRate = {
+    label: 'אחוז סגירה (%)',
+    data: dates.map(d => {
+      const dd = dayMap[d];
+      return dd.received > 0 ? parseFloat((dd.closed/dd.received*100).toFixed(1)) : null;
+    }),
+    borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)',
+    borderWidth: 2, tension: 0.4, fill: false,
+    pointBackgroundColor: '#f59e0b', pointRadius: 3, spanGaps: true,
+    yAxisID: 'yPct'
+  };
+  const dsCost = {
+    label: 'עלות סופית לסגירה ('+sym+')',
+    data: dates.map(d => {
+      const dd = dayMap[d];
+      return dd.received > 0 ? parseFloat((dd.spend/dd.received).toFixed(0)) : null;
+    }),
+    borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.08)',
+    borderWidth: 2, tension: 0.4, fill: false,
+    pointBackgroundColor: '#a78bfa', pointRadius: 3, spanGaps: true,
+    yAxisID: 'yCost'
+  };
 
   chartInstance = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: dates.map(d => d.slice(5)),
-      datasets: [
-        {
-          type: 'bar',
-          label: 'לידים שהגיעו',
-          data: dates.map(d => dayMap[d].received),
-          backgroundColor: 'rgba(59,130,246,0.5)',
-          borderColor: '#3b82f6',
-          borderWidth: 1,
-          yAxisID: 'yCount'
-        },
-        {
-          type: 'bar',
-          label: 'סגירות',
-          data: dates.map(d => dayMap[d].closed),
-          backgroundColor: 'rgba(16,185,129,0.8)',
-          borderColor: '#10b981',
-          borderWidth: 1,
-          yAxisID: 'yCount'
-        },
-        {
-          type: 'line',
-          label: 'אחוז סגירה (%)',
-          data: dates.map(d => {
-            const dd = dayMap[d];
-            return dd.received > 0 ? parseFloat((dd.closed/dd.received*100).toFixed(1)) : null;
-          }),
-          borderColor: '#f59e0b',
-          backgroundColor: 'rgba(245,158,11,0.08)',
-          borderWidth: 2, tension: 0.35, fill: false, spanGaps: true,
-          pointBackgroundColor: '#f59e0b',
-          yAxisID: 'yPct'
-        },
-        {
-          type: 'line',
-          label: 'עלות לסגירה ('+sym+')',
-          data: dates.map(d => {
-            const dd = dayMap[d];
-            return dd.closed > 0 ? parseFloat((dd.spend/dd.closed).toFixed(0)) : null;
-          }),
-          borderColor: '#a78bfa',
-          backgroundColor: 'rgba(167,139,250,0.08)',
-          borderWidth: 2, tension: 0.35, fill: false, spanGaps: true,
-          pointBackgroundColor: '#a78bfa',
-          yAxisID: 'yCost'
-        }
-      ]
-    },
+    type: 'line',
+    data: { labels: dates.map(d => d.slice(5)), datasets: [dsReceived, dsClosed, dsRate, dsCost] },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode:'index', intersect:false },
-      plugins: { legend: { labels: { color:'#94a3b8', font:{ family:'Heebo', size:12 } } } },
+      plugins: {
+        legend: { labels: { color:'#94a3b8', font:{ family:'Heebo', size:12 }, boxWidth:14, padding:16 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              if (v === null) return null;
+              if (ctx.dataset.yAxisID === 'yPct')  return ctx.dataset.label + ': ' + v + '%';
+              if (ctx.dataset.yAxisID === 'yCost')  return ctx.dataset.label + ': ' + sym + v;
+              return ctx.dataset.label + ': ' + v;
+            }
+          }
+        }
+      },
       scales: {
-        x:      { ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
-        yCount: { type:'linear', position:'left', ticks:{ color:'#60a5fa', stepSize:1 }, grid:{ color:'#1e2d45' },
-                  title:{ display:true, text:'לידים', color:'#60a5fa', font:{ family:'Heebo' } } },
+        x:      { ticks:{ color:'#64748b', font:{size:11} }, grid:{ color:'#1e2d45' } },
+        yCount: { type:'linear', position:'left',
+                  ticks:{ color:'#60a5fa', stepSize:1 }, grid:{ color:'#1e2d45' },
+                  title:{ display:true, text:'לידים', color:'#60a5fa', font:{family:'Heebo'} } },
         yPct:   { type:'linear', position:'right', min:0, max:100,
                   ticks:{ color:'#f59e0b', callback:v=>v+'%' }, grid:{ drawOnChartArea:false },
-                  title:{ display:true, text:'% סגירה', color:'#f59e0b', font:{ family:'Heebo' } } },
+                  title:{ display:true, text:'% סגירה', color:'#f59e0b', font:{family:'Heebo'} } },
         yCost:  { type:'linear', position:'right', display:false,
                   ticks:{ color:'#a78bfa', callback:v=>sym+v }, grid:{ drawOnChartArea:false } }
       }
@@ -764,15 +800,20 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
   const setErr = msg => { masterEl.innerHTML = `<div style="padding:20px;color:var(--muted);text-align:center;font-size:13px">⚠️ ${msg}</div>`; };
 
   try {
-    // ── Fetch from Supabase leader_summary ───────────────────────────────
-    console.log(`[MasterTable] querying leader_summary: client=${clientId} from=${from} to=${to}`);
-    const rows = await supaFetch('leader_summary',
-      `?select=source,received,closed,not_relevant,no_answer&client_id=eq.${clientId}&date=gte.${from}&date=lte.${to}`);
+    // ── Source filter ─────────────────────────────────────────────────────
+    const srcFilter = ductorsSourceFilter === 'google'   ? '&source=eq.Google'
+                    : ductorsSourceFilter === 'facebook' ? '&source=eq.Facebook' : '';
+    const activeSources = ductorsSourceFilter === 'google'   ? ['Google']
+                        : ductorsSourceFilter === 'facebook' ? ['Facebook']
+                        : ['Google','Facebook'];
 
-    console.log(`[MasterTable] rows returned: ${Array.isArray(rows) ? rows.length : JSON.stringify(rows)}`);
+    // ── Fetch from Supabase leader_summary ────────────────────────────────
+    const rows = await supaFetch('leader_summary',
+      `?select=source,received,closed,not_relevant,no_answer&client_id=eq.${clientId}&date=gte.${from}&date=lte.${to}${srcFilter}`);
+
     if (!rows || !Array.isArray(rows)) { setErr('שגיאה בטעינה מ-Supabase'); return; }
 
-    // ── Aggregate by source ──────────────────────────────────────────────
+    // ── Aggregate by source ───────────────────────────────────────────────
     const map = {
       Google:   { received:0, closed:0, not_relevant:0, no_answer:0 },
       Facebook: { received:0, closed:0, not_relevant:0, no_answer:0 }
@@ -786,8 +827,11 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
       map[src].no_answer    += r.no_answer    || 0;
     });
 
-    // ── daily_insights aggregation ───────────────────────────────────────
-    const inRange = r => r.client_id === clientId && r.date >= from && r.date <= to;
+    // ── daily_insights aggregation (filtered by platform if needed) ───────
+    const inRange  = r => r.client_id === clientId && r.date >= from && r.date <= to;
+    const platFilter = ductorsSourceFilter === 'google'   ? r => r.platform==='google'
+                     : ductorsSourceFilter === 'facebook' ? r => r.platform==='facebook'
+                     : () => true;
     const platData = {
       Google: allInsights.filter(r => inRange(r) && r.platform === 'google').reduce(
         (a, r) => ({ spend: a.spend + parseFloat(r.spend||0), leads: a.leads + parseInt(r.leads||0) + parseInt(r.conversions||0) }),
@@ -799,10 +843,13 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
       )
     };
 
-    // ── Formatters ───────────────────────────────────────────────────────
-    const fmtMoney = v       => v > 0 ? sym + Math.round(v).toLocaleString('he-IL') : '-';
-    const fmtRate  = (cl, t) => t > 0 && cl > 0 ? (cl / t * 100).toFixed(1) + '%' : '-';
-    const fmtClose = (sp,cl) => cl > 0 && sp > 0 ? sym + Math.round(sp / cl) : '-';
+    // ── Formatters ────────────────────────────────────────────────────────
+    const fmtMoney = v => v > 0 ? sym + Math.round(v).toLocaleString('he-IL') : '-';
+    // NEW: closing rate = לידים שנסגרו (received from Leader) / לידים שנכנסו (platform leads)
+    const fmtRate  = (leaderLeads, platLeads) =>
+      platLeads > 0 && leaderLeads > 0 ? (leaderLeads / platLeads * 100).toFixed(1) + '%' : '-';
+    // Cost per actual lead (spend / received from Leader)
+    const fmtClose = (sp, rec) => rec > 0 && sp > 0 ? sym + Math.round(sp / rec) : '-';
     const fmtSt    = (nr,na) => {
       const p = [];
       if (na > 0) p.push('אין מענה: ' + na);
@@ -813,28 +860,28 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
     const CLR     = { Google:'#ef4444', Facebook:'#3b82f6' };
     const DISPLAY = { Google:'Google',  Facebook:'Meta' };
 
-    const tableRows = ['Google','Facebook'].map(src => {
+    const tableRows = activeSources.map(src => {
       const d  = map[src];
       const pd = platData[src];
       return `<tr>
         <td style="font-weight:700"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CLR[src]};margin-left:6px;vertical-align:middle"></span>${DISPLAY[src]}</td>
         <td style="text-align:center;color:var(--accent2);font-weight:700">${fmtMoney(pd.spend)}</td>
         <td style="text-align:center;color:var(--green)">${pd.leads > 0 ? pd.leads : '-'}</td>
-        <td style="text-align:center;font-weight:700">${d.received > 0 ? d.received : '-'}</td>
-        <td style="text-align:center;color:var(--green)">${fmtRate(d.closed, d.received)}</td>
+        <td style="text-align:center;font-weight:700;color:var(--blue,#60a5fa)">${d.received > 0 ? d.received : '-'}</td>
+        <td style="text-align:center;color:var(--green)">${fmtRate(d.received, pd.leads)}</td>
         <td style="text-align:center;font-size:11px;color:var(--muted2)">${fmtSt(d.not_relevant, d.no_answer)}</td>
         <td style="text-align:center;color:var(--yellow);font-weight:700">${fmtClose(pd.spend, d.received)}</td>
       </tr>`;
     }).join('');
 
-    const tot = {
-      spend:    platData.Google.spend + platData.Facebook.spend,
-      platLeads:platData.Google.leads + platData.Facebook.leads,
-      received: map.Google.received   + map.Facebook.received,
-      closed:   map.Google.closed     + map.Facebook.closed,
-      nr:       map.Google.not_relevant + map.Facebook.not_relevant,
-      na:       map.Google.no_answer    + map.Facebook.no_answer
-    };
+    // Totals (only over active sources)
+    const tot = activeSources.reduce((acc, src) => ({
+      spend:    acc.spend    + (platData[src].spend  || 0),
+      platLeads:acc.platLeads+ (platData[src].leads  || 0),
+      received: acc.received + (map[src].received    || 0),
+      nr:       acc.nr       + (map[src].not_relevant|| 0),
+      na:       acc.na       + (map[src].no_answer   || 0)
+    }), { spend:0, platLeads:0, received:0, nr:0, na:0 });
 
     masterEl.innerHTML = `
       <div class="section-title">🎯 Master Conversion Table - ${label}</div>
@@ -843,8 +890,8 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
           <thead><tr>
             <th>מקור</th>
             <th style="text-align:center">הוצאה</th>
-            <th style="text-align:center">לידים (פלטפורמה)</th>
-            <th style="text-align:center">לידים (Leader)</th>
+            <th style="text-align:center">לידים שנכנסו</th>
+            <th style="text-align:center">לידים שנסגרו</th>
             <th style="text-align:center">אחוז סגירה</th>
             <th style="text-align:center">סטטוסים</th>
             <th style="text-align:center">עלות סופית לסגירה</th>
@@ -855,8 +902,8 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
               <td>סה"כ</td>
               <td style="text-align:center;color:var(--accent2)">${fmtMoney(tot.spend)}</td>
               <td style="text-align:center;color:var(--green)">${tot.platLeads > 0 ? tot.platLeads : '-'}</td>
-              <td style="text-align:center">${tot.received > 0 ? tot.received : '-'}</td>
-              <td style="text-align:center;color:var(--green)">${fmtRate(tot.closed, tot.received)}</td>
+              <td style="text-align:center;color:var(--blue,#60a5fa)">${tot.received > 0 ? tot.received : '-'}</td>
+              <td style="text-align:center;color:var(--green)">${fmtRate(tot.received, tot.platLeads)}</td>
               <td style="text-align:center;font-size:11px;color:var(--muted2)">${fmtSt(tot.nr, tot.na)}</td>
               <td style="text-align:center;color:var(--yellow)">${fmtClose(tot.spend, tot.received)}</td>
             </tr>
