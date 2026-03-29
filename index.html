@@ -552,8 +552,13 @@ async function showClient(clientId, dateMode) {
     ${c.business_name==='The Ductors'?`<div id="leader-table-container"></div><div id="master-conv-container"><div style="padding:24px;color:var(--muted);text-align:center;font-size:13px">⏳ טוען נתוני Master Table...</div></div>`:''}
   `;
 
-  renderChart(c, from, to, sym);
-  if (c.business_name === 'The Ductors') { renderLeaderTable(c, sym, from, to, label); renderMasterConversionTable(c, from, to, sym, label); }
+  if (c.business_name === 'The Ductors') {
+    renderDuctorsChart(c, from, to, sym);
+    renderLeaderTable(c, sym, from, to, label);
+    renderMasterConversionTable(c, from, to, sym, label);
+  } else {
+    renderChart(c, from, to, sym);
+  }
   if (c.business_name === 'אסיף מארקט') renderAsifNewCustomers(c.id, from, to, label, sym);
   if (c.business_name === 'מקור השפע') await loadNewCustomersInline(c.id);
 }
@@ -583,6 +588,91 @@ function renderChart(c, from, to, sym) {
         x:{ ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
         y:{ type:'linear', position:'right', ticks:{ color:'#60a5fa', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ color:'#1e2d45' } },
         y1:{ type:'linear', position:'left', ticks:{ color:'#f59e0b', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ drawOnChartArea:false } }
+      }
+    }
+  });
+}
+
+async function renderDuctorsChart(c, from, to, sym) {
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+  const ctx = document.getElementById('perf-chart')?.getContext('2d');
+  if (!ctx) return;
+
+  // Fetch daily leader_summary rows for date range
+  const leaderRows = await supaFetch('leader_summary',
+    `?select=date,received,closed&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}&order=date.asc`);
+  if (!leaderRows || !Array.isArray(leaderRows) || !leaderRows.length) return;
+
+  // Aggregate per day (sum all sources)
+  const dayMap = {};
+  leaderRows.forEach(r => {
+    if (!dayMap[r.date]) dayMap[r.date] = { received:0, closed:0, spend:0 };
+    dayMap[r.date].received += r.received || 0;
+    dayMap[r.date].closed   += r.closed   || 0;
+  });
+
+  // Add spend from allInsights (Google + Meta combined)
+  allInsights.filter(r => r.client_id===c.id && r.date>=from && r.date<=to)
+    .forEach(r => {
+      if (dayMap[r.date]) dayMap[r.date].spend += parseFloat(r.spend||0);
+    });
+
+  const dates = Object.keys(dayMap).sort();
+
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: dates.map(d => d.slice(5)),
+      datasets: [
+        {
+          type: 'bar',
+          label: 'סגירות',
+          data: dates.map(d => dayMap[d].closed),
+          backgroundColor: 'rgba(16,185,129,0.7)',
+          borderColor: '#10b981',
+          borderWidth: 1,
+          yAxisID: 'yCount'
+        },
+        {
+          type: 'line',
+          label: 'אחוז סגירה (%)',
+          data: dates.map(d => {
+            const dd = dayMap[d];
+            return dd.received > 0 ? parseFloat((dd.closed/dd.received*100).toFixed(1)) : null;
+          }),
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245,158,11,0.08)',
+          borderWidth: 2, tension: 0.35, fill: false, spanGaps: true,
+          pointBackgroundColor: '#f59e0b',
+          yAxisID: 'yPct'
+        },
+        {
+          type: 'line',
+          label: 'עלות לסגירה ('+sym+')',
+          data: dates.map(d => {
+            const dd = dayMap[d];
+            return dd.closed > 0 ? parseFloat((dd.spend/dd.closed).toFixed(0)) : null;
+          }),
+          borderColor: '#a78bfa',
+          backgroundColor: 'rgba(167,139,250,0.08)',
+          borderWidth: 2, tension: 0.35, fill: false, spanGaps: true,
+          pointBackgroundColor: '#a78bfa',
+          yAxisID: 'yCost'
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode:'index', intersect:false },
+      plugins: { legend: { labels: { color:'#94a3b8', font:{ family:'Heebo', size:12 } } } },
+      scales: {
+        x:      { ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
+        yCount: { type:'linear', position:'left',  ticks:{ color:'#10b981', stepSize:1 }, grid:{ color:'#1e2d45' },
+                  title:{ display:true, text:'סגירות', color:'#10b981', font:{ family:'Heebo' } } },
+        yPct:   { type:'linear', position:'right', ticks:{ color:'#f59e0b', callback:v=>v+'%' }, grid:{ drawOnChartArea:false },
+                  title:{ display:true, text:'% סגירה', color:'#f59e0b', font:{ family:'Heebo' } } },
+        yCost:  { type:'linear', position:'right', ticks:{ color:'#a78bfa', callback:v=>sym+v }, grid:{ drawOnChartArea:false },
+                  title:{ display:true, text:'עלות לסגירה', color:'#a78bfa', font:{ family:'Heebo' } }, display: false }
       }
     }
   });
@@ -690,7 +780,7 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
 
     // ── Formatters ───────────────────────────────────────────────────────
     const fmtMoney = v       => v > 0 ? sym + Math.round(v).toLocaleString('he-IL') : '-';
-    const fmtRate  = (cl, t) => t > 0 && cl > 0 ? Math.round(cl / t * 100) + '%' : '-';
+    const fmtRate  = (cl, t) => t > 0 && cl > 0 ? (cl / t * 100).toFixed(1) + '%' : '-';
     const fmtClose = (sp,cl) => cl > 0 && sp > 0 ? sym + Math.round(sp / cl) : '-';
     const fmtSt    = (nr,na) => {
       const p = [];
