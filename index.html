@@ -548,6 +548,7 @@ async function showClient(clientId, dateMode) {
     </div>
     ${metaCamps.length?`<div class="section-title">📘 קמפיינים Meta</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(metaCamps)}</tbody></table></div>`:''}
     ${googleCamps.length?`<div class="section-title">🔴 קמפיינים Google</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(googleCamps)}</tbody></table></div>`:''}
+    ${c.business_name==='The Ductors'?`<div id="leader-table-container"></div><div id="master-conv-container"><div style="padding:24px;color:var(--muted);text-align:center;font-size:13px">⏳ טוען נתוני Master Table...</div></div>`:''}
   `;
 
   renderChart(c, from, to, sym);
@@ -628,8 +629,9 @@ async function renderLeaderTable(c, sym, filterFrom, filterTo, label) {
     const totalClosePct  = totalLeads>0?(totalClosed/totalLeads*100).toFixed(0):0;
     const totalCostClose = totalClosed>0?sym+Math.round(totalSpend/totalClosed).toLocaleString('he-IL'):'-';
 
-    const container = document.createElement('div');
-    container.innerHTML = `
+    const leaderEl = document.getElementById('leader-table-container') || document.createElement('div');
+    if (!document.getElementById('leader-table-container')) document.getElementById('main').appendChild(leaderEl);
+    leaderEl.innerHTML = `
       <div class="section-title">📋 נתוני Leader - ${label}</div>
       <div class="table-wrap"><table>
         <thead><tr><th>קמפיין</th><th>לידים</th><th>נסגרו</th><th>% סגירה</th><th>עלות סגירה</th></tr></thead>
@@ -640,7 +642,6 @@ async function renderLeaderTable(c, sym, filterFrom, filterTo, label) {
           </tr>
         </tbody>
       </table></div>`;
-    document.getElementById('main').appendChild(container);
   } catch(e) { console.error('Leader fetch error:', e); }
 }
 
@@ -742,8 +743,9 @@ async function renderMasterConversionTable(c, from, to, sym, label) {
       irrelevant: map.Google.irrelevant   + map.Facebook.irrelevant
     };
 
-    const container = document.createElement('div');
-    container.innerHTML = `
+    const masterEl = document.getElementById('master-conv-container') || document.createElement('div');
+    if (!document.getElementById('master-conv-container')) document.getElementById('main').appendChild(masterEl);
+    masterEl.innerHTML = `
       <div class="section-title">🎯 Master Conversion Table - ${label}</div>
       <div class="table-wrap" style="margin-bottom:32px">
         <table>
@@ -772,7 +774,6 @@ async function renderMasterConversionTable(c, from, to, sym, label) {
           </tbody>
         </table>
       </div>`;
-    document.getElementById('main').appendChild(container);
 
   } catch(e) { console.error('Master conversion table error:', e); }
 }
