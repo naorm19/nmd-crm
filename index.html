@@ -626,110 +626,116 @@ async function renderDuctorsChart(c, from, to, sym) {
     if (sel) sel.value = ductorsSourceFilter;
   }
 
-  // ── Build Supabase query with optional source filter ──────────────────
+  // ── Source filter param ───────────────────────────────────────────────
   const srcFilter = ductorsSourceFilter === 'google'   ? '&source=eq.Google'
                   : ductorsSourceFilter === 'facebook' ? '&source=eq.Facebook' : '';
 
+  // ── Fetch daily rows from leader_summary ──────────────────────────────
   const leaderRows = await supaFetch('leader_summary',
-    `?select=date,source,received,closed&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}${srcFilter}&order=date.asc`);
+    `?select=date,received&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}${srcFilter}&order=date.asc`);
 
-  console.log('[DuctorsChart] rows:', leaderRows?.length, '| source:', ductorsSourceFilter, '| from:', from, 'to:', to);
+  console.log('[DuctorsChart] leaderRows count:', leaderRows?.length, '| sample:', JSON.stringify(leaderRows?.slice(0,2)));
+  console.log('[DuctorsChart] source filter:', ductorsSourceFilter, '| from:', from, '| to:', to, '| client_id:', c.id);
 
-  if (!leaderRows || !Array.isArray(leaderRows) || !leaderRows.length) {
-    renderChart(c, from, to, sym); return;
+  // ── Build dayMap: date → { received, platLeads } ──────────────────────
+  const dayMap = {};
+
+  if (leaderRows && Array.isArray(leaderRows)) {
+    leaderRows.forEach(r => {
+      if (!r.date) return;
+      if (!dayMap[r.date]) dayMap[r.date] = { received: 0, platLeads: 0 };
+      dayMap[r.date].received += Number(r.received) || 0;
+    });
   }
 
-  // ── Aggregate per day ─────────────────────────────────────────────────
-  const dayMap = {};
-  leaderRows.forEach(r => {
-    if (!dayMap[r.date]) dayMap[r.date] = { received:0, closed:0, spend:0 };
-    dayMap[r.date].received += r.received || 0;
-    dayMap[r.date].closed   += r.closed   || 0;
-  });
-
-  // Add spend from allInsights (filter by platform if source filtered)
-  const platFilter = ductorsSourceFilter === 'google'   ? r => r.platform==='google'
-                   : ductorsSourceFilter === 'facebook' ? r => r.platform==='facebook'
+  // Add platform leads per day from allInsights (for % rate calculation)
+  const platFilter = ductorsSourceFilter === 'google'   ? r => r.platform === 'google'
+                   : ductorsSourceFilter === 'facebook' ? r => r.platform === 'facebook'
                    : () => true;
   allInsights
-    .filter(r => r.client_id===c.id && r.date>=from && r.date<=to && platFilter(r))
+    .filter(r => r.client_id === c.id && r.date >= from && r.date <= to && platFilter(r))
     .forEach(r => {
-      if (dayMap[r.date]) dayMap[r.date].spend += parseFloat(r.spend||0);
-      else                dayMap[r.date] = { received:0, closed:0, spend: parseFloat(r.spend||0) };
+      if (!dayMap[r.date]) dayMap[r.date] = { received: 0, platLeads: 0 };
+      dayMap[r.date].platLeads += parseInt(r.leads || 0) + parseInt(r.conversions || 0);
     });
 
   const dates = Object.keys(dayMap).sort();
+  console.log('[DuctorsChart] dates:', dates.length, '| dayMap sample:', JSON.stringify(Object.entries(dayMap).slice(0,2)));
 
-  // ── Line datasets ────────────────────────────────────────────────────
+  if (!dates.length) {
+    const wrap = document.getElementById('chart-wrap');
+    if (wrap) wrap.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-family:Heebo,sans-serif">אין נתוני Leader לטווח זה</div>';
+    return;
+  }
+
+  // ── Dataset 1: לידים שנסגרו – daily received (GREEN) ─────────────────
   const dsReceived = {
     label: 'לידים שנסגרו',
     data: dates.map(d => dayMap[d].received),
-    borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.12)',
+    borderColor: '#10b981',
+    backgroundColor: 'rgba(16,185,129,0.13)',
     borderWidth: 2.5, tension: 0.4, fill: true,
-    pointBackgroundColor: '#3b82f6', pointRadius: 3, spanGaps: true,
-    yAxisID: 'yCount'
+    pointBackgroundColor: '#10b981', pointRadius: 4, pointHoverRadius: 6,
+    spanGaps: true, yAxisID: 'yCount'
   };
-  const dsClosed = {
-    label: 'סגירות',
-    data: dates.map(d => dayMap[d].closed),
-    borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.10)',
-    borderWidth: 2.5, tension: 0.4, fill: false,
-    pointBackgroundColor: '#10b981', pointRadius: 3, spanGaps: true,
-    yAxisID: 'yCount'
-  };
+
+  // ── Dataset 2: אחוז סגירה – received / platLeads × 100 (BLUE) ────────
   const dsRate = {
     label: 'אחוז סגירה (%)',
     data: dates.map(d => {
       const dd = dayMap[d];
-      return dd.received > 0 ? parseFloat((dd.closed/dd.received*100).toFixed(1)) : null;
+      return (dd.platLeads > 0 && dd.received > 0)
+        ? parseFloat((dd.received / dd.platLeads * 100).toFixed(1))
+        : null;
     }),
-    borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)',
+    borderColor: '#3b82f6',
+    backgroundColor: 'rgba(59,130,246,0.08)',
     borderWidth: 2, tension: 0.4, fill: false,
-    pointBackgroundColor: '#f59e0b', pointRadius: 3, spanGaps: true,
-    yAxisID: 'yPct'
+    pointBackgroundColor: '#3b82f6', pointRadius: 4, pointHoverRadius: 6,
+    spanGaps: true, yAxisID: 'yPct'
   };
-  const dsCost = {
-    label: 'עלות סופית לסגירה ('+sym+')',
-    data: dates.map(d => {
-      const dd = dayMap[d];
-      return dd.received > 0 ? parseFloat((dd.spend/dd.received).toFixed(0)) : null;
-    }),
-    borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.08)',
-    borderWidth: 2, tension: 0.4, fill: false,
-    pointBackgroundColor: '#a78bfa', pointRadius: 3, spanGaps: true,
-    yAxisID: 'yCost'
-  };
+
+  // ── Format X labels as DD/MM ──────────────────────────────────────────
+  const xLabels = dates.map(d => { const [,m,dd] = d.split('-'); return `${dd}/${m}`; });
 
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: { labels: dates.map(d => d.slice(5)), datasets: [dsReceived, dsClosed, dsRate, dsCost] },
+    data: { labels: xLabels, datasets: [dsReceived, dsRate] },
     options: {
       responsive: true, maintainAspectRatio: false,
-      interaction: { mode:'index', intersect:false },
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color:'#94a3b8', font:{ family:'Heebo', size:12 }, boxWidth:14, padding:16 } },
+        legend: {
+          labels: { color: '#94a3b8', font: { family: 'Heebo', size: 12 }, boxWidth: 14, padding: 18 }
+        },
         tooltip: {
           callbacks: {
-            label: ctx => {
-              const v = ctx.parsed.y;
-              if (v === null) return null;
-              if (ctx.dataset.yAxisID === 'yPct')  return ctx.dataset.label + ': ' + v + '%';
-              if (ctx.dataset.yAxisID === 'yCost')  return ctx.dataset.label + ': ' + sym + v;
-              return ctx.dataset.label + ': ' + v;
+            label: item => {
+              const v = item.parsed.y;
+              if (v === null || v === undefined) return null;
+              return item.dataset.yAxisID === 'yPct'
+                ? item.dataset.label + ': ' + v + '%'
+                : item.dataset.label + ': ' + v;
             }
           }
         }
       },
       scales: {
-        x:      { ticks:{ color:'#64748b', font:{size:11} }, grid:{ color:'#1e2d45' } },
-        yCount: { type:'linear', position:'left',
-                  ticks:{ color:'#60a5fa', stepSize:1 }, grid:{ color:'#1e2d45' },
-                  title:{ display:true, text:'לידים', color:'#60a5fa', font:{family:'Heebo'} } },
-        yPct:   { type:'linear', position:'right', min:0, max:100,
-                  ticks:{ color:'#f59e0b', callback:v=>v+'%' }, grid:{ drawOnChartArea:false },
-                  title:{ display:true, text:'% סגירה', color:'#f59e0b', font:{family:'Heebo'} } },
-        yCost:  { type:'linear', position:'right', display:false,
-                  ticks:{ color:'#a78bfa', callback:v=>sym+v }, grid:{ drawOnChartArea:false } }
+        x: { ticks: { color: '#64748b', font: { size: 11 } }, grid: { color: '#1e2d45' } },
+        yCount: {
+          type: 'linear', position: 'left',
+          min: 0,
+          ticks: { color: '#10b981', stepSize: 1, precision: 0 },
+          grid: { color: '#1e2d45' },
+          title: { display: true, text: 'לידים שנסגרו', color: '#10b981', font: { family: 'Heebo', size: 11 } }
+        },
+        yPct: {
+          type: 'linear', position: 'right',
+          min: 0, max: 100,
+          ticks: { color: '#3b82f6', callback: v => v + '%' },
+          grid: { drawOnChartArea: false },
+          title: { display: true, text: '% סגירה', color: '#3b82f6', font: { family: 'Heebo', size: 11 } }
+        }
       }
     }
   });
