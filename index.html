@@ -696,7 +696,9 @@ async function renderDuctorsChart(c, from, to, sym) {
     const platLeads = insight[d]?.leads  || 0;
     const received  = byDate[d]          || 0;
     if (platLeads <= 0 || received <= 0) return null;
-    return parseFloat((received / platLeads * 100).toFixed(1));
+    // Cap at 100 — non-platform sources (word-of-mouth, third-party) can push
+    // received above platLeads, which would send the line outside the chart area
+    return Math.min(100, parseFloat((received / platLeads * 100).toFixed(1)));
   });
 
   const valCost = dates.map(d => {
