@@ -193,14 +193,15 @@ function getBudgetStatus(spent, budget) {
 function getDateRange(mode) {
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
-  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const fmt    = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const fmtHeb = iso => { const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; };
   const today = fmt(now);
   if (mode==='today')     return { from:today, to:today, label:'היום' };
   if (mode==='yesterday') { const y=new Date(now); y.setDate(y.getDate()-1); const s=fmt(y); return { from:s, to:s, label:'אתמול' }; }
   if (mode==='7d')        { const d=new Date(now); d.setDate(d.getDate()-6); return { from:fmt(d), to:today, label:'7 ימים' }; }
   if (mode==='30d')       { const d=new Date(now); d.setDate(d.getDate()-29); return { from:fmt(d), to:today, label:'30 ימים' }; }
   if (mode==='month')     { return { from:`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`, to:today, label:'החודש' }; }
-  if (mode==='custom' && customFrom && customTo) { return { from:customFrom, to:customTo, label:`${customFrom} עד ${customTo}` }; }
+  if (mode==='custom' && customFrom && customTo) { return { from:customFrom, to:customTo, label:`${fmtHeb(customFrom)} – ${fmtHeb(customTo)}` }; }
   return { from:today, to:today, label:'היום' };
 }
 
@@ -653,10 +654,12 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
 
   try {
     // ── Fetch from Supabase leader_summary ───────────────────────────────
+    console.log(`[MasterTable] querying leader_summary: client=${clientId} from=${from} to=${to}`);
     const rows = await supaFetch('leader_summary',
-      `?client_id=eq.${clientId}&date=gte.${from}&date=lte.${to}&select=source,received,closed,not_relevant,no_answer`);
+      `?select=source,received,closed,not_relevant,no_answer&client_id=eq.${clientId}&date=gte.${from}&date=lte.${to}`);
 
-    if (!rows) { setErr('שגיאה בטעינה מ-Supabase'); return; }
+    console.log(`[MasterTable] rows returned: ${Array.isArray(rows) ? rows.length : JSON.stringify(rows)}`);
+    if (!rows || !Array.isArray(rows)) { setErr('שגיאה בטעינה מ-Supabase'); return; }
 
     // ── Aggregate by source ──────────────────────────────────────────────
     const map = {
