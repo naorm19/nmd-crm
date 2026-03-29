@@ -632,35 +632,34 @@ async function renderDuctorsChart(c, from, to, sym) {
 
   // ── Fetch daily rows from leader_summary ──────────────────────────────
   const leaderRows = await supaFetch('leader_summary',
-    `?select=date,received&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}${srcFilter}&order=date.asc`);
+    `?select=date,received,closed&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}${srcFilter}&order=date.asc`);
 
-  console.log('[DuctorsChart] leaderRows count:', leaderRows?.length, '| sample:', JSON.stringify(leaderRows?.slice(0,2)));
-  console.log('[DuctorsChart] source filter:', ductorsSourceFilter, '| from:', from, '| to:', to, '| client_id:', c.id);
+  console.log('[DuctorsChart] rows:', leaderRows?.length, '| sample:', JSON.stringify(leaderRows?.slice(0,3)));
 
-  // ── Build dayMap: date → { received, platLeads } ──────────────────────
+  // ── Build dayMap: date → { received, platLeads, spend } ──────────────
   const dayMap = {};
 
   if (leaderRows && Array.isArray(leaderRows)) {
     leaderRows.forEach(r => {
       if (!r.date) return;
-      if (!dayMap[r.date]) dayMap[r.date] = { received: 0, platLeads: 0 };
+      if (!dayMap[r.date]) dayMap[r.date] = { received: 0, platLeads: 0, spend: 0 };
       dayMap[r.date].received += Number(r.received) || 0;
     });
   }
 
-  // Add platform leads per day from allInsights (for % rate calculation)
+  // ── Add spend + platform leads per day from allInsights ──────────────
   const platFilter = ductorsSourceFilter === 'google'   ? r => r.platform === 'google'
                    : ductorsSourceFilter === 'facebook' ? r => r.platform === 'facebook'
                    : () => true;
   allInsights
     .filter(r => r.client_id === c.id && r.date >= from && r.date <= to && platFilter(r))
     .forEach(r => {
-      if (!dayMap[r.date]) dayMap[r.date] = { received: 0, platLeads: 0 };
+      if (!dayMap[r.date]) dayMap[r.date] = { received: 0, platLeads: 0, spend: 0 };
       dayMap[r.date].platLeads += parseInt(r.leads || 0) + parseInt(r.conversions || 0);
+      dayMap[r.date].spend     += parseFloat(r.spend || 0);
     });
 
   const dates = Object.keys(dayMap).sort();
-  console.log('[DuctorsChart] dates:', dates.length, '| dayMap sample:', JSON.stringify(Object.entries(dayMap).slice(0,2)));
 
   if (!dates.length) {
     const wrap = document.getElementById('chart-wrap');
@@ -668,18 +667,18 @@ async function renderDuctorsChart(c, from, to, sym) {
     return;
   }
 
-  // ── Dataset 1: לידים שנסגרו – daily received (GREEN) ─────────────────
+  // ── Dataset 1: לידים שנסגרו – received per day · GREEN · left axis ───
   const dsReceived = {
     label: 'לידים שנסגרו',
-    data: dates.map(d => dayMap[d].received),
+    data: dates.map(d => dayMap[d].received || 0),
     borderColor: '#10b981',
-    backgroundColor: 'rgba(16,185,129,0.13)',
-    borderWidth: 2.5, tension: 0.4, fill: true,
+    backgroundColor: 'rgba(16,185,129,0.10)',
+    borderWidth: 2.5, tension: 0.35, fill: true,
     pointBackgroundColor: '#10b981', pointRadius: 4, pointHoverRadius: 6,
-    spanGaps: true, yAxisID: 'yCount'
+    spanGaps: true, yAxisID: 'yLeft'
   };
 
-  // ── Dataset 2: אחוז סגירה – received / platLeads × 100 (BLUE) ────────
+  // ── Dataset 2: אחוז סגירה – received/platLeads×100 · BLUE · right axis
   const dsRate = {
     label: 'אחוז סגירה (%)',
     data: dates.map(d => {
@@ -689,52 +688,105 @@ async function renderDuctorsChart(c, from, to, sym) {
         : null;
     }),
     borderColor: '#3b82f6',
-    backgroundColor: 'rgba(59,130,246,0.08)',
-    borderWidth: 2, tension: 0.4, fill: false,
+    backgroundColor: 'rgba(59,130,246,0.06)',
+    borderWidth: 2, tension: 0.35, fill: false,
     pointBackgroundColor: '#3b82f6', pointRadius: 4, pointHoverRadius: 6,
     spanGaps: true, yAxisID: 'yPct'
   };
 
-  // ── Format X labels as DD/MM ──────────────────────────────────────────
-  const xLabels = dates.map(d => { const [,m,dd] = d.split('-'); return `${dd}/${m}`; });
+  // ── Dataset 3: עלות סופית לסגירה – spend/received · PURPLE · left axis
+  const dsCost = {
+    label: 'עלות סופית לסגירה (' + sym + ')',
+    data: dates.map(d => {
+      const dd = dayMap[d];
+      return (dd.received > 0 && dd.spend > 0)
+        ? parseFloat((dd.spend / dd.received).toFixed(0))
+        : null;
+    }),
+    borderColor: '#a78bfa',
+    backgroundColor: 'rgba(167,139,250,0.06)',
+    borderWidth: 2, tension: 0.35, fill: false,
+    pointBackgroundColor: '#a78bfa', pointRadius: 4, pointHoverRadius: 6,
+    spanGaps: true, yAxisID: 'yLeft'
+  };
+
+  // ── X labels as DD/MM ─────────────────────────────────────────────────
+  const xLabels = dates.map(d => { const [,m,dy] = d.split('-'); return `${dy}/${m}`; });
+
+  // ── Dynamic left-axis max (pad 20% above peak) ────────────────────────
+  const leftVals = [
+    ...dates.map(d => dayMap[d].received || 0),
+    ...dates.map(d => {
+      const dd = dayMap[d];
+      return (dd.received > 0 && dd.spend > 0) ? dd.spend / dd.received : 0;
+    })
+  ].filter(v => v > 0);
+  const leftMax = leftVals.length ? Math.ceil(Math.max(...leftVals) * 1.25) : 10;
 
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: { labels: xLabels, datasets: [dsReceived, dsRate] },
+    data: { labels: xLabels, datasets: [dsReceived, dsRate, dsCost] },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 18 } },
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: {
-          labels: { color: '#94a3b8', font: { family: 'Heebo', size: 12 }, boxWidth: 14, padding: 18 }
+          labels: {
+            color: '#94a3b8',
+            font: { family: 'Heebo', size: 12 },
+            boxWidth: 14, padding: 20
+          }
         },
         tooltip: {
           callbacks: {
             label: item => {
               const v = item.parsed.y;
               if (v === null || v === undefined) return null;
-              return item.dataset.yAxisID === 'yPct'
-                ? item.dataset.label + ': ' + v + '%'
-                : item.dataset.label + ': ' + v;
+              if (item.dataset.yAxisID === 'yPct')
+                return item.dataset.label + ': ' + v + '%';
+              if (item.datasetIndex === 2)   // cost line
+                return item.dataset.label + ': ' + sym + Number(v).toLocaleString('he-IL');
+              return item.dataset.label + ': ' + v;
             }
           }
         }
       },
       scales: {
-        x: { ticks: { color: '#64748b', font: { size: 11 } }, grid: { color: '#1e2d45' } },
-        yCount: {
-          type: 'linear', position: 'left',
-          min: 0,
-          ticks: { color: '#10b981', stepSize: 1, precision: 0 },
-          grid: { color: '#1e2d45' },
-          title: { display: true, text: 'לידים שנסגרו', color: '#10b981', font: { family: 'Heebo', size: 11 } }
+        x: {
+          ticks: { color: '#64748b', font: { size: 11 } },
+          grid:  { color: '#1e2d45' }
         },
+        // LEFT axis: whole numbers (leads count + cost)
+        yLeft: {
+          type: 'linear', position: 'left',
+          min: 0, max: leftMax,
+          ticks: {
+            color: '#94a3b8',
+            precision: 0,
+            callback: v => Number.isInteger(v) ? v : null
+          },
+          grid: { color: '#1e2d45' },
+          title: {
+            display: true,
+            text: 'לידים / עלות (' + sym + ')',
+            color: '#94a3b8',
+            font: { family: 'Heebo', size: 11 }
+          }
+        },
+        // RIGHT axis: percentage only, fixed 0-100
         yPct: {
           type: 'linear', position: 'right',
           min: 0, max: 100,
           ticks: { color: '#3b82f6', callback: v => v + '%' },
           grid: { drawOnChartArea: false },
-          title: { display: true, text: '% סגירה', color: '#3b82f6', font: { family: 'Heebo', size: 11 } }
+          title: {
+            display: true,
+            text: '% סגירה',
+            color: '#3b82f6',
+            font: { family: 'Heebo', size: 11 }
+          }
         }
       }
     }
