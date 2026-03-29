@@ -645,106 +645,126 @@ async function renderLeaderTable(c, sym, filterFrom, filterTo, label) {
   } catch(e) { console.error('Leader fetch error:', e); }
 }
 
-async function renderMasterConversionTable(c, from, to, sym, label) {
+async function renderMasterConversionTable(client, from, to, sym, label) {
   const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT0ItiZNLkWNI3pLY9URnnnzKs880m2o5T3SYIfhbt23iL2ln0T627u8hkyU1wO4CQIRUQ32oyWSbcz/pub?gid=21240070&single=true&output=csv';
-  const clientId = c.id;
-  // cols: 0=תאריך, 1=שם, 2=טלפון, 3=סטטוס, 4=מקור
-  const CLOSED_ST     = ['closed','נסגר','done','completed','booked','job created'];
-  const NOREPLY_ST    = ['אין מענה','no answer','no response','no reply'];
-  const IRRELEVANT_ST = ['לא רלוונטי','not relevant','irrelevant'];
+  const clientId = client.id;
 
-  function parseCSV(t) {
-    const rows = []; let cur = '', inQ = false, cols = [];
-    for (let i = 0; i < t.length; i++) {
-      const ch = t[i];
-      if (ch === '"') { inQ = !inQ; }
-      else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
-      else if ((ch === '\n' || ch === '\r') && !inQ) {
-        if (ch === '\r' && t[i+1] === '\n') i++;
-        cols.push(cur.trim()); rows.push(cols); cols = []; cur = '';
-      } else { cur += ch; }
-    }
-    if (cur || cols.length) { cols.push(cur.trim()); rows.push(cols); }
-    return rows;
-  }
+  // Always get the container first — guaranteed to exist from showClient template
+  const masterEl = document.getElementById('master-conv-container');
+  if (!masterEl) return;
+
+  const setError = (msg) => {
+    masterEl.innerHTML = `<div style="padding:20px;color:var(--muted);text-align:center;font-size:13px">⚠️ ${msg}</div>`;
+  };
 
   try {
-    const res  = await fetch(CSV_URL);
+    // --- Fetch CSV ---
+    let res;
+    try { res = await fetch(CSV_URL); } catch(fetchErr) {
+      console.error('[MasterTable] fetch failed:', fetchErr);
+      setError('לא ניתן לטעון נתוני Leader. בדוק חיבור רשת.');
+      return;
+    }
+    if (!res.ok) {
+      console.error('[MasterTable] CSV response not ok:', res.status);
+      setError('שגיאה בטעינת CSV: ' + res.status);
+      return;
+    }
     const text = await res.text();
-    const csvRows = parseCSV(text).slice(1);
+    console.log('[MasterTable] CSV fetched, length:', text.length, 'from:', from, 'to:', to);
 
-    // --- CSV aggregation ---
+    // --- Parse CSV (cols: 0=תאריך, 3=סטטוס, 4=מקור) ---
+    const CLOSED_ST     = ['closed','נסגר','done','completed','booked','job created'];
+    const NOREPLY_ST    = ['אין מענה','no answer','no response','no reply'];
+    const IRRELEVANT_ST = ['לא רלוונטי','not relevant','irrelevant'];
+
     const map = {
       Google:   { total:0, closed:0, noReply:0, irrelevant:0 },
       Facebook: { total:0, closed:0, noReply:0, irrelevant:0 }
     };
-    csvRows.forEach(cols => {
-      const rawDate = (cols[0]||'').trim().substring(0,10);
-      if (!rawDate || rawDate < from || rawDate > to) return;
-      const src = (cols[4]||'').trim();
+
+    const lines = text.split(/\r?\n/).slice(1); // skip header
+    lines.forEach(line => {
+      if (!line.trim()) return;
+      // simple split — quoted cells with commas handled by taking first 5 cols only
+      const firstCommas = [];
+      let idx = 0;
+      for (let n = 0; n < 5; n++) {
+        const next = line.indexOf(',', idx);
+        if (next === -1) break;
+        firstCommas.push(line.substring(idx, next));
+        idx = next + 1;
+      }
+      firstCommas.push(line.substring(idx)); // col 5+
+
+      const rawDate = (firstCommas[0]||'').trim().substring(0, 10);
+      if (!rawDate) return;
+      if (rawDate < from || rawDate > to) return;
+
+      const src = (firstCommas[4]||'').replace(/"/g,'').trim();
       if (src !== 'Google' && src !== 'Facebook') return;
-      const st = (cols[3]||'').trim().toLowerCase();
+
+      const st = (firstCommas[3]||'').replace(/"/g,'').trim().toLowerCase();
       map[src].total++;
       if (CLOSED_ST.some(s     => st.includes(s))) map[src].closed++;
       if (NOREPLY_ST.some(s    => st.includes(s))) map[src].noReply++;
       if (IRRELEVANT_ST.some(s => st.includes(s))) map[src].irrelevant++;
     });
 
+    console.log('[MasterTable] CSV map:', JSON.stringify(map));
+
     // --- daily_insights aggregation ---
     const inRange = r => r.client_id === clientId && r.date >= from && r.date <= to;
     const platData = {
-      Google: allInsights.filter(r=>inRange(r)&&r.platform==='google').reduce(
-        (a,r)=>({ spend: a.spend+parseFloat(r.spend||0), leads: a.leads+parseInt(r.leads||0)+parseInt(r.conversions||0) }),
-        { spend:0, leads:0 }
+      Google: allInsights.filter(r => inRange(r) && r.platform === 'google').reduce(
+        (a, r) => ({ spend: a.spend + parseFloat(r.spend||0), leads: a.leads + parseInt(r.leads||0) + parseInt(r.conversions||0) }),
+        { spend: 0, leads: 0 }
       ),
-      Facebook: allInsights.filter(r=>inRange(r)&&r.platform==='facebook').reduce(
-        (a,r)=>({ spend: a.spend+parseFloat(r.spend||0), leads: a.leads+parseInt(r.leads||0)+parseInt(r.conversions||0) }),
-        { spend:0, leads:0 }
+      Facebook: allInsights.filter(r => inRange(r) && r.platform === 'facebook').reduce(
+        (a, r) => ({ spend: a.spend + parseFloat(r.spend||0), leads: a.leads + parseInt(r.leads||0) + parseInt(r.conversions||0) }),
+        { spend: 0, leads: 0 }
       )
     };
 
+    console.log('[MasterTable] platData:', JSON.stringify(platData));
+
     // --- Formatters ---
-    const fmtMoney = v  => v > 0 ? sym+Math.round(v).toLocaleString('he-IL') : '-';
-    const fmtRate  = (c,t) => t > 0 && c > 0 ? Math.round(c/t*100)+'%' : '-';
-    const fmtClose = (sp,cl) => cl > 0 && sp > 0 ? sym+Math.round(sp/cl) : '-';
+    const fmtMoney = v       => v > 0 ? sym + Math.round(v).toLocaleString('he-IL') : '-';
+    const fmtRate  = (cl, t) => t > 0 && cl > 0 ? Math.round(cl / t * 100) + '%' : '-';
+    const fmtClose = (sp,cl) => cl > 0 && sp > 0 ? sym + Math.round(sp / cl) : '-';
     const fmtSt    = (nr,ir) => {
       const p = [];
-      if (nr > 0) p.push(`אין מענה: ${nr}`);
-      if (ir > 0) p.push(`לא רלוונטי: ${ir}`);
-      return p.length ? p.join(' &nbsp;|&nbsp; ') : '-';
+      if (nr > 0) p.push('אין מענה: ' + nr);
+      if (ir > 0) p.push('לא רלוונטי: ' + ir);
+      return p.length ? p.join(' | ') : '-';
     };
 
-    const CLR     = { Google:'#ef4444', Facebook:'#3b82f6' };
-    const DISPLAY = { Google:'Google', Facebook:'Meta' };
+    const CLR     = { Google: '#ef4444', Facebook: '#3b82f6' };
+    const DISPLAY = { Google: 'Google',  Facebook: 'Meta' };
 
-    const tableRows = ['Google','Facebook'].map(src => {
+    const tableRows = ['Google', 'Facebook'].map(src => {
       const d  = map[src];
       const pd = platData[src];
       return `<tr>
-        <td style="font-weight:700">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CLR[src]};margin-left:6px;vertical-align:middle"></span>
-          ${DISPLAY[src]}
-        </td>
+        <td style="font-weight:700"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CLR[src]};margin-left:6px;vertical-align:middle"></span>${DISPLAY[src]}</td>
         <td style="text-align:center;color:var(--accent2);font-weight:700">${fmtMoney(pd.spend)}</td>
         <td style="text-align:center;color:var(--green)">${pd.leads > 0 ? pd.leads : '-'}</td>
         <td style="text-align:center;font-weight:700">${d.total > 0 ? d.total : '-'}</td>
         <td style="text-align:center;color:var(--green)">${fmtRate(d.closed, d.total)}</td>
-        <td style="text-align:center;font-size:11px;color:var(--muted2);line-height:1.6">${fmtSt(d.noReply, d.irrelevant)}</td>
+        <td style="text-align:center;font-size:11px;color:var(--muted2)">${fmtSt(d.noReply, d.irrelevant)}</td>
         <td style="text-align:center;color:var(--yellow);font-weight:700">${fmtClose(pd.spend, d.total)}</td>
       </tr>`;
     }).join('');
 
     const tot = {
-      spend:      platData.Google.spend   + platData.Facebook.spend,
-      platLeads:  platData.Google.leads   + platData.Facebook.leads,
-      csvTotal:   map.Google.total        + map.Facebook.total,
-      closed:     map.Google.closed       + map.Facebook.closed,
-      noReply:    map.Google.noReply      + map.Facebook.noReply,
-      irrelevant: map.Google.irrelevant   + map.Facebook.irrelevant
+      spend:     platData.Google.spend  + platData.Facebook.spend,
+      platLeads: platData.Google.leads  + platData.Facebook.leads,
+      csvTotal:  map.Google.total       + map.Facebook.total,
+      closed:    map.Google.closed      + map.Facebook.closed,
+      noReply:   map.Google.noReply     + map.Facebook.noReply,
+      irrelevant:map.Google.irrelevant  + map.Facebook.irrelevant
     };
 
-    const masterEl = document.getElementById('master-conv-container') || document.createElement('div');
-    if (!document.getElementById('master-conv-container')) document.getElementById('main').appendChild(masterEl);
     masterEl.innerHTML = `
       <div class="section-title">🎯 Master Conversion Table - ${label}</div>
       <div class="table-wrap" style="margin-bottom:32px">
@@ -753,11 +773,11 @@ async function renderMasterConversionTable(c, from, to, sym, label) {
             <tr>
               <th>מקור</th>
               <th style="text-align:center">הוצאה</th>
-              <th style="text-align:center">לידים<br><span style="font-weight:400;font-size:10px;color:var(--muted)">(פלטפורמה)</span></th>
-              <th style="text-align:center">לידים<br><span style="font-weight:400;font-size:10px;color:var(--muted)">(Leader)</span></th>
+              <th style="text-align:center">לידים (פלטפורמה)</th>
+              <th style="text-align:center">לידים (Leader)</th>
               <th style="text-align:center">אחוז סגירה</th>
               <th style="text-align:center">סטטוסים</th>
-              <th style="text-align:center">עלות סופית<br><span style="font-weight:400;font-size:10px;color:var(--muted)">לסגירה</span></th>
+              <th style="text-align:center">עלות סופית לסגירה</th>
             </tr>
           </thead>
           <tbody>
@@ -775,7 +795,10 @@ async function renderMasterConversionTable(c, from, to, sym, label) {
         </table>
       </div>`;
 
-  } catch(e) { console.error('Master conversion table error:', e); }
+  } catch(e) {
+    console.error('[MasterTable] unexpected error:', e);
+    setError('שגיאה בלתי צפויה: ' + e.message);
+  }
 }
 
 async function loadNewCustomersInline(clientId) {
