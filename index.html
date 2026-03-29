@@ -477,7 +477,7 @@ async function showClient(clientId, dateMode) {
       const dailyTarget = mb>0 && daysLeft>0 ? sym+Math.round((mb-campSpend)/daysLeft).toLocaleString('he-IL') : '-';
       // Results for selected date range
       const rangeRows  = allInsights.filter(r => r.campaign_id===camp.id && r.date>=from && r.date<=to);
-      const rangeLeads = rangeRows.reduce((s,r) => s + parseFloat(r.leads||0), 0);
+      const rangeLeads = rangeRows.reduce((s,r) => s + parseInt(r.leads||0) + parseInt(r.conversions||0), 0);
       const rangeSpend = rangeRows.reduce((s,r) => s + parseFloat(r.spend||0), 0);
       const rangeCpl   = rangeLeads>0 && rangeSpend>0 ? sym+Math.round(rangeSpend/rangeLeads).toLocaleString('he-IL') : '-';
       totalRangeLeads += rangeLeads;
