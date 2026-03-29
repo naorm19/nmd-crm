@@ -598,194 +598,261 @@ function renderChart(c, from, to, sym) {
 }
 
 async function renderDuctorsChart(c, from, to, sym) {
+  // ── 1. Destroy previous instance ────────────────────────────────────────
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
-  const ctx = document.getElementById('perf-chart')?.getContext('2d');
-  if (!ctx) return;
+  const canvas = document.getElementById('perf-chart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
 
-  // ── Source filter dropdown ─────────────────────────────────────────────
+  // ── 2. Source-filter dropdown (inject once, sync value on re-renders) ───
   const filterEl = document.getElementById('ductors-src-filter');
-  if (filterEl && !filterEl.querySelector('select')) {
-    filterEl.innerHTML = `<select id="ductors-src-sel"
-      style="background:var(--surface2);border:1px solid var(--border);color:var(--text);
-             padding:4px 10px;border-radius:6px;font-family:'Heebo',sans-serif;font-size:12px;
-             cursor:pointer;outline:none;">
-      <option value="all">כל המקורות</option>
-      <option value="google">Google</option>
-      <option value="facebook">Meta</option>
-    </select>`;
-    document.getElementById('ductors-src-sel').value = ductorsSourceFilter;
-    document.getElementById('ductors-src-sel').addEventListener('change', function() {
-      ductorsSourceFilter = this.value;
-      const cl = clients.find(x => x.id === c.id);
-      const { from: f, to: t, label: lb } = getDateRange(currentDateMode);
-      renderDuctorsChart(cl, f, t, cur(cl));
-      renderMasterConversionTable(cl, f, t, cur(cl), lb);
-    });
-  } else if (filterEl) {
-    const sel = document.getElementById('ductors-src-sel');
-    if (sel) sel.value = ductorsSourceFilter;
+  if (filterEl) {
+    if (!filterEl.querySelector('select')) {
+      filterEl.innerHTML =
+        `<select id="ductors-src-sel"
+           style="background:var(--surface2);border:1px solid var(--border);color:var(--text);
+                  padding:4px 10px;border-radius:6px;font-family:'Heebo',sans-serif;
+                  font-size:12px;cursor:pointer;outline:none;">
+           <option value="all">כל המקורות</option>
+           <option value="google">Google</option>
+           <option value="facebook">Meta</option>
+         </select>`;
+      const sel = document.getElementById('ductors-src-sel');
+      sel.value = ductorsSourceFilter;
+      sel.addEventListener('change', function () {
+        ductorsSourceFilter = this.value;
+        const cl = clients.find(x => x.id === c.id);
+        const { from: f, to: t, label: lb } = getDateRange(currentDateMode);
+        renderDuctorsChart(cl, f, t, cur(cl));
+        renderMasterConversionTable(cl, f, t, cur(cl), lb);
+      });
+    } else {
+      const sel = document.getElementById('ductors-src-sel');
+      if (sel) sel.value = ductorsSourceFilter;
+    }
   }
 
-  // ── Source filter param ───────────────────────────────────────────────
-  const srcFilter = ductorsSourceFilter === 'google'   ? '&source=eq.Google'
-                  : ductorsSourceFilter === 'facebook' ? '&source=eq.Facebook' : '';
+  // ── 3. Build Supabase source-filter param ────────────────────────────────
+  const srcParam = ductorsSourceFilter === 'google'   ? '&source=eq.Google'
+                 : ductorsSourceFilter === 'facebook' ? '&source=eq.Facebook'
+                 : '';
 
-  // ── Fetch daily rows from leader_summary ──────────────────────────────
-  const leaderRows = await supaFetch('leader_summary',
-    `?select=date,received,closed&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}${srcFilter}&order=date.asc`);
-
-  console.log('[DuctorsChart] rows:', leaderRows?.length, '| sample:', JSON.stringify(leaderRows?.slice(0,3)));
-
-  // ── Build dayMap: date → { received, platLeads, spend } ──────────────
-  const dayMap = {};
-
-  if (leaderRows && Array.isArray(leaderRows)) {
-    leaderRows.forEach(r => {
-      if (!r.date) return;
-      if (!dayMap[r.date]) dayMap[r.date] = { received: 0, platLeads: 0, spend: 0 };
-      dayMap[r.date].received += Number(r.received) || 0;
-    });
+  // ── 4. Fetch raw daily rows from leader_summary ──────────────────────────
+  //    One row per (date, source) → we aggregate by date below
+  let rawRows = [];
+  try {
+    rawRows = await supaFetch('leader_summary',
+      `?select=date,received&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}${srcParam}&order=date.asc`);
+  } catch (e) {
+    console.error('[DuctorsChart] fetch error:', e);
   }
+  console.log('[DuctorsChart] rawRows:', rawRows?.length, JSON.stringify(rawRows?.slice(0, 4)));
 
-  // ── Add spend + platform leads per day from allInsights ──────────────
-  const platFilter = ductorsSourceFilter === 'google'   ? r => r.platform === 'google'
-                   : ductorsSourceFilter === 'facebook' ? r => r.platform === 'facebook'
-                   : () => true;
-  allInsights
-    .filter(r => r.client_id === c.id && r.date >= from && r.date <= to && platFilter(r))
-    .forEach(r => {
-      if (!dayMap[r.date]) dayMap[r.date] = { received: 0, platLeads: 0, spend: 0 };
-      dayMap[r.date].platLeads += parseInt(r.leads || 0) + parseInt(r.conversions || 0);
-      dayMap[r.date].spend     += parseFloat(r.spend || 0);
-    });
-
-  const dates = Object.keys(dayMap).sort();
-
-  if (!dates.length) {
+  if (!rawRows || !rawRows.length) {
+    canvas.style.display = 'none';
     const wrap = document.getElementById('chart-wrap');
-    if (wrap) wrap.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-family:Heebo,sans-serif">אין נתוני Leader לטווח זה</div>';
+    if (wrap && !wrap.querySelector('.no-data-msg')) {
+      const msg = document.createElement('div');
+      msg.className = 'no-data-msg';
+      msg.style.cssText = 'padding:40px;text-align:center;color:var(--muted);font-family:Heebo,sans-serif;font-size:13px';
+      msg.textContent = 'אין נתוני Leader לטווח זה';
+      wrap.appendChild(msg);
+    }
     return;
   }
+  canvas.style.display = '';
 
-  // ── Dataset 1: לידים שנסגרו – received per day · GREEN · left axis ───
-  const dsReceived = {
-    label: 'לידים שנסגרו',
-    data: dates.map(d => dayMap[d].received || 0),
-    borderColor: '#10b981',
-    backgroundColor: 'rgba(16,185,129,0.10)',
-    borderWidth: 2.5, tension: 0.35, fill: true,
-    pointBackgroundColor: '#10b981', pointRadius: 4, pointHoverRadius: 6,
-    spanGaps: true, yAxisID: 'yLeft'
-  };
+  // ── 5. Aggregate received by date (sums all sources when filter = all) ───
+  const byDate = {};                              // { 'YYYY-MM-DD': receivedCount }
+  for (const row of rawRows) {
+    const d = String(row.date || '').trim();
+    if (!d) continue;
+    byDate[d] = (byDate[d] || 0) + (parseInt(row.received, 10) || 0);
+  }
 
-  // ── Dataset 2: אחוז סגירה – received/platLeads×100 · BLUE · right axis
-  const dsRate = {
-    label: 'אחוז סגירה (%)',
-    data: dates.map(d => {
-      const dd = dayMap[d];
-      return (dd.platLeads > 0 && dd.received > 0)
-        ? parseFloat((dd.received / dd.platLeads * 100).toFixed(1))
-        : null;
-    }),
-    borderColor: '#3b82f6',
-    backgroundColor: 'rgba(59,130,246,0.06)',
-    borderWidth: 2, tension: 0.35, fill: false,
-    pointBackgroundColor: '#3b82f6', pointRadius: 4, pointHoverRadius: 6,
-    spanGaps: true, yAxisID: 'yPct'
-  };
+  // ── 6. Build platform spend + leads per day from allInsights ─────────────
+  const matchPlat = ductorsSourceFilter === 'google'   ? r => r.platform === 'google'
+                  : ductorsSourceFilter === 'facebook' ? r => r.platform === 'facebook'
+                  : () => true;
+  const insight = {};                             // { 'YYYY-MM-DD': { spend, leads } }
+  for (const r of allInsights) {
+    if (r.client_id !== c.id)             continue;
+    if (r.date < from || r.date > to)     continue;
+    if (!matchPlat(r))                    continue;
+    if (!insight[r.date]) insight[r.date] = { spend: 0, leads: 0 };
+    insight[r.date].spend += parseFloat(r.spend       || 0);
+    insight[r.date].leads += parseInt(r.leads         || 0)
+                           + parseInt(r.conversions   || 0);
+  }
 
-  // ── Dataset 3: עלות סופית לסגירה – spend/received · PURPLE · left axis
-  const dsCost = {
-    label: 'עלות סופית לסגירה (' + sym + ')',
-    data: dates.map(d => {
-      const dd = dayMap[d];
-      return (dd.received > 0 && dd.spend > 0)
-        ? parseFloat((dd.spend / dd.received).toFixed(0))
-        : null;
-    }),
-    borderColor: '#a78bfa',
-    backgroundColor: 'rgba(167,139,250,0.06)',
-    borderWidth: 2, tension: 0.35, fill: false,
-    pointBackgroundColor: '#a78bfa', pointRadius: 4, pointHoverRadius: 6,
-    spanGaps: true, yAxisID: 'yLeft'
-  };
+  // ── 7. Sorted date list (leader_summary dates are the source of truth) ───
+  const dates = Object.keys(byDate).sort();
+  console.log('[DuctorsChart] dates:', dates.length, '| byDate sample:', JSON.stringify(Object.entries(byDate).slice(0, 3)));
 
-  // ── X labels as DD/MM ─────────────────────────────────────────────────
-  const xLabels = dates.map(d => { const [,m,dy] = d.split('-'); return `${dy}/${m}`; });
+  // ── 8. Build the three value arrays ──────────────────────────────────────
+  const valReceived = dates.map(d => byDate[d]);
 
-  // ── Dynamic left-axis max (pad 20% above peak) ────────────────────────
-  const leftVals = [
-    ...dates.map(d => dayMap[d].received || 0),
-    ...dates.map(d => {
-      const dd = dayMap[d];
-      return (dd.received > 0 && dd.spend > 0) ? dd.spend / dd.received : 0;
-    })
-  ].filter(v => v > 0);
-  const leftMax = leftVals.length ? Math.ceil(Math.max(...leftVals) * 1.25) : 10;
+  const valRate = dates.map(d => {
+    const platLeads = insight[d]?.leads  || 0;
+    const received  = byDate[d]          || 0;
+    if (platLeads <= 0 || received <= 0) return null;
+    return parseFloat((received / platLeads * 100).toFixed(1));
+  });
 
+  const valCost = dates.map(d => {
+    const spend    = insight[d]?.spend || 0;
+    const received = byDate[d]         || 0;
+    if (received <= 0 || spend <= 0) return null;
+    return parseFloat((spend / received).toFixed(0));
+  });
+
+  // ── 9. Axis max for left axis (leads + cost, +30% headroom) ─────────────
+  const leftPeak = Math.max(
+    ...valReceived,
+    ...valCost.map(v => v ?? 0)
+  );
+  const leftMax = leftPeak > 0 ? Math.ceil(leftPeak * 1.3) : 10;
+
+  // ── 10. X-axis labels DD/MM ───────────────────────────────────────────────
+  const xLabels = dates.map(d => {
+    const parts = d.split('-');
+    return `${parts[2]}/${parts[1]}`;
+  });
+
+  // ── 11. Build Chart ───────────────────────────────────────────────────────
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: { labels: xLabels, datasets: [dsReceived, dsRate, dsCost] },
+    data: {
+      labels: xLabels,
+      datasets: [
+        // ── GREEN: לידים שנסגרו (received) · left axis · filled ──────────
+        {
+          label: 'לידים שנסגרו',
+          data: valReceived,
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16,185,129,0.12)',
+          borderWidth: 2.5,
+          cubicInterpolationMode: 'monotone',
+          fill: true,
+          pointBackgroundColor: '#10b981',
+          pointBorderColor: '#0f172a',
+          pointBorderWidth: 1,
+          pointRadius: 4,
+          pointHoverRadius: 7,
+          yAxisID: 'yLeft'
+        },
+        // ── BLUE: אחוז סגירה (%) · right axis · no fill ──────────────────
+        {
+          label: 'אחוז סגירה (%)',
+          data: valRate,
+          borderColor: '#3b82f6',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          cubicInterpolationMode: 'monotone',
+          fill: false,
+          spanGaps: true,
+          pointBackgroundColor: '#3b82f6',
+          pointBorderColor: '#0f172a',
+          pointBorderWidth: 1,
+          pointRadius: 4,
+          pointHoverRadius: 7,
+          yAxisID: 'yRight'
+        },
+        // ── PURPLE: עלות סופית לסגירה (spend/received) · left axis ────────
+        {
+          label: 'עלות סופית לסגירה (' + sym + ')',
+          data: valCost,
+          borderColor: '#a78bfa',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          cubicInterpolationMode: 'monotone',
+          fill: false,
+          spanGaps: true,
+          pointBackgroundColor: '#a78bfa',
+          pointBorderColor: '#0f172a',
+          pointBorderWidth: 1,
+          pointRadius: 4,
+          pointHoverRadius: 7,
+          yAxisID: 'yLeft'
+        }
+      ]
+    },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: 18 } },
+      layout: { padding: { top: 22, right: 12, bottom: 4, left: 4 } },
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: {
+          position: 'top',
+          align: 'end',
           labels: {
             color: '#94a3b8',
             font: { family: 'Heebo', size: 12 },
-            boxWidth: 14, padding: 20
+            usePointStyle: true,
+            pointStyleWidth: 10,
+            padding: 22
           }
         },
         tooltip: {
+          rtl: true,
+          bodyFont: { family: 'Heebo' },
+          titleFont: { family: 'Heebo' },
           callbacks: {
             label: item => {
               const v = item.parsed.y;
               if (v === null || v === undefined) return null;
-              if (item.dataset.yAxisID === 'yPct')
-                return item.dataset.label + ': ' + v + '%';
-              if (item.datasetIndex === 2)   // cost line
-                return item.dataset.label + ': ' + sym + Number(v).toLocaleString('he-IL');
-              return item.dataset.label + ': ' + v;
+              if (item.dataset.yAxisID === 'yRight')
+                return ` ${item.dataset.label}: ${v}%`;
+              if (item.datasetIndex === 2)
+                return ` ${item.dataset.label}: ${sym}${Number(v).toLocaleString('he-IL')}`;
+              return ` ${item.dataset.label}: ${v}`;
             }
           }
         }
       },
       scales: {
         x: {
-          ticks: { color: '#64748b', font: { size: 11 } },
-          grid:  { color: '#1e2d45' }
+          ticks: { color: '#64748b', font: { size: 11 }, maxRotation: 40 },
+          grid:  { color: 'rgba(30,45,69,0.9)' }
         },
-        // LEFT axis: whole numbers (leads count + cost)
+        // LEFT: leads count + cost — whole numbers, auto-scaled with headroom
         yLeft: {
-          type: 'linear', position: 'left',
-          min: 0, max: leftMax,
+          type: 'linear',
+          position: 'left',
+          min: 0,
+          max: leftMax,
           ticks: {
             color: '#94a3b8',
+            font: { size: 11 },
             precision: 0,
-            callback: v => Number.isInteger(v) ? v : null
+            callback: v => (Number.isInteger(v) ? v : '')
           },
-          grid: { color: '#1e2d45' },
+          grid: { color: 'rgba(30,45,69,0.9)' },
           title: {
             display: true,
             text: 'לידים / עלות (' + sym + ')',
             color: '#94a3b8',
-            font: { family: 'Heebo', size: 11 }
+            font: { family: 'Heebo', size: 10 }
           }
         },
-        // RIGHT axis: percentage only, fixed 0-100
-        yPct: {
-          type: 'linear', position: 'right',
-          min: 0, max: 100,
-          ticks: { color: '#3b82f6', callback: v => v + '%' },
+        // RIGHT: percentage axis — isolated, always 0–100
+        yRight: {
+          type: 'linear',
+          position: 'right',
+          min: 0,
+          max: 100,
+          ticks: {
+            color: '#3b82f6',
+            font: { size: 11 },
+            callback: v => v + '%'
+          },
           grid: { drawOnChartArea: false },
           title: {
             display: true,
             text: '% סגירה',
             color: '#3b82f6',
-            font: { family: 'Heebo', size: 11 }
+            font: { family: 'Heebo', size: 10 }
           }
         }
       }
