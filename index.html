@@ -463,17 +463,25 @@ async function showClient(clientId, dateMode) {
   const googleCamps = camps.filter(x => x.platform==='google');
 
   const campTable = (list) => {
-    if (!list.length) return '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">אין קמפיינים</td></tr>';
+    if (!list.length) return '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">אין קמפיינים</td></tr>';
     const totalBudget = list.reduce((s,c) => s + parseFloat(c.monthly_budget||0), 0);
     const totalSpend  = list.reduce((s,c) => s + getCampMonthSpend(c.id), 0);
     const totalDaily  = totalBudget>0 && daysLeft>0 ? sym+Math.round((totalBudget-totalSpend)/daysLeft).toLocaleString('he-IL') : '-';
-    return list.map(camp => {
+    let totalRangeLeads = 0, totalRangeSpend = 0;
+    const rows = list.map(camp => {
       const sc = camp.status==='ENABLED'||camp.status==='ACTIVE'?'active':'paused';
       const mb = parseFloat(camp.monthly_budget||0);
       const campSpend = getCampMonthSpend(camp.id);
       const pct = mb>0 ? (campSpend/mb*100).toFixed(0) : '-';
       const campStatus = mb>0 ? getBudgetStatus(campSpend, mb) : null;
       const dailyTarget = mb>0 && daysLeft>0 ? sym+Math.round((mb-campSpend)/daysLeft).toLocaleString('he-IL') : '-';
+      // Results for selected date range
+      const rangeRows  = allInsights.filter(r => r.campaign_id===camp.id && r.date>=from && r.date<=to);
+      const rangeLeads = rangeRows.reduce((s,r) => s + parseFloat(r.leads||0), 0);
+      const rangeSpend = rangeRows.reduce((s,r) => s + parseFloat(r.spend||0), 0);
+      const rangeCpl   = rangeLeads>0 && rangeSpend>0 ? sym+Math.round(rangeSpend/rangeLeads).toLocaleString('he-IL') : '-';
+      totalRangeLeads += rangeLeads;
+      totalRangeSpend += rangeSpend;
       return `<tr>
         <td><span class="status-dot ${sc}"></span>${camp.campaign_name||'-'}</td>
         <td>${camp.status||'-'}</td>
@@ -484,13 +492,19 @@ async function showClient(clientId, dateMode) {
         <td>${sym}${Math.round(campSpend).toLocaleString('he-IL')}</td>
         <td>${campStatus?`<span class="budget-status-badge ${campStatus.cls}">${pct}% - ${campStatus.label}</span>`:pct==='0'?'0%':pct+'%'}</td>
         <td>${dailyTarget}</td>
+        <td style="text-align:center;font-weight:700;color:var(--green)">${rangeLeads>0?rangeLeads:'-'}</td>
+        <td style="text-align:center;color:var(--yellow)">${rangeCpl}</td>
       </tr>`;
-    }).join('') + `<tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
+    }).join('');
+    const totalRangeCpl = totalRangeLeads>0 && totalRangeSpend>0 ? sym+Math.round(totalRangeSpend/totalRangeLeads).toLocaleString('he-IL') : '-';
+    return rows + `<tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
       <td colspan="2" style="padding:12px 16px;color:var(--muted2)">סה"כ</td>
       <td style="padding:12px 16px;">${sym}${Math.round(totalBudget).toLocaleString('he-IL')}</td>
       <td style="padding:12px 16px;">${sym}${Math.round(totalSpend).toLocaleString('he-IL')}</td>
       <td style="padding:12px 16px;"></td>
       <td style="padding:12px 16px;">${totalDaily}</td>
+      <td style="padding:12px 16px;text-align:center;color:var(--green)">${totalRangeLeads>0?totalRangeLeads:'-'}</td>
+      <td style="padding:12px 16px;text-align:center;color:var(--yellow)">${totalRangeCpl}</td>
     </tr>`;
   };
 
@@ -532,8 +546,8 @@ async function showClient(clientId, dateMode) {
       </div>
       <div class="chart-wrap" id="chart-wrap"><canvas id="perf-chart"></canvas></div>
     </div>
-    ${metaCamps.length?`<div class="section-title">📘 קמפיינים Meta</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th></tr></thead><tbody>${campTable(metaCamps)}</tbody></table></div>`:''}
-    ${googleCamps.length?`<div class="section-title">🔴 קמפיינים Google</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th></tr></thead><tbody>${campTable(googleCamps)}</tbody></table></div>`:''}
+    ${metaCamps.length?`<div class="section-title">📘 קמפיינים Meta</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(metaCamps)}</tbody></table></div>`:''}
+    ${googleCamps.length?`<div class="section-title">🔴 קמפיינים Google</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(googleCamps)}</tbody></table></div>`:''}
   `;
 
   renderChart(c, from, to, sym);
@@ -632,42 +646,47 @@ async function renderLeaderTable(c, sym, filterFrom, filterTo, label) {
 
 async function renderWorkizSources(clientId, from, to, label) {
   const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT0ItiZNLkWNI3pLY9URnnnzKs880m2o5T3SYIfhbt23iL2ln0T627u8hkyU1wO4CQIRUQ32oyWSbcz/pub?gid=21240070&single=true&output=csv';
-  const SOURCE_COLORS = { Google:'#ef4444', Facebook:'#3b82f6' };
+  // cols: 0=תאריך, 1=שם, 2=טלפון, 3=סטטוס, 4=מקור
+  const CLOSED_ST   = ['closed','נסגר','done','completed','booked','job created'];
+  const NOREPLY_ST  = ['אין מענה','no answer','no response','no reply'];
+  const IRRELEVANT_ST = ['לא רלוונטי','not relevant','irrelevant'];
+
+  function parseCSV(t) {
+    const rows = []; let cur = '', inQ = false, cols = [];
+    for (let i = 0; i < t.length; i++) {
+      const ch = t[i];
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+      else if ((ch === '\n' || ch === '\r') && !inQ) {
+        if (ch === '\r' && t[i+1] === '\n') i++;
+        cols.push(cur.trim()); rows.push(cols); cols = []; cur = '';
+      } else { cur += ch; }
+    }
+    if (cur || cols.length) { cols.push(cur.trim()); rows.push(cols); }
+    return rows;
+  }
 
   try {
     const res  = await fetch(CSV_URL);
     const text = await res.text();
+    const csvRows = parseCSV(text).slice(1);
 
-    // Parse CSV (handle quoted multiline cells)
-    function parseCSV(t) {
-      const rows = []; let cur = '', inQ = false, cols = [];
-      for (let i = 0; i < t.length; i++) {
-        const ch = t[i];
-        if (ch === '"') { inQ = !inQ; }
-        else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
-        else if ((ch === '\n' || ch === '\r') && !inQ) {
-          if (ch === '\r' && t[i+1] === '\n') i++;
-          cols.push(cur.trim()); rows.push(cols); cols = []; cur = '';
-        } else { cur += ch; }
-      }
-      if (cur || cols.length) { cols.push(cur.trim()); rows.push(cols); }
-      return rows;
-    }
+    // Map: { Google:{total,closed,noReply,irrelevant}, Facebook:{...} }
+    const map = {
+      Google:   { total:0, closed:0, noReply:0, irrelevant:0 },
+      Facebook: { total:0, closed:0, noReply:0, irrelevant:0 }
+    };
 
-    const allRows = parseCSV(text).slice(1); // skip header
-    // cols: 0=תאריך, 1=שם, 2=טלפון, 3=סטטוס, 4=מקור
-    const CLOSED_STATUSES = ['closed','נסגר','done','completed','booked'];
-
-    const map = { Google:{ total:0, closed:0 }, Facebook:{ total:0, closed:0 } };
-
-    allRows.forEach(cols => {
+    csvRows.forEach(cols => {
       const rawDate = (cols[0]||'').trim().substring(0,10);
       if (!rawDate || rawDate < from || rawDate > to) return;
-      const src    = (cols[4]||'').trim();
-      const status = (cols[3]||'').trim().toLowerCase();
+      const src = (cols[4]||'').trim();
       if (src !== 'Google' && src !== 'Facebook') return;
+      const st = (cols[3]||'').trim().toLowerCase();
       map[src].total++;
-      if (CLOSED_STATUSES.some(s => status.includes(s))) map[src].closed++;
+      if (CLOSED_ST.some(s   => st.includes(s))) map[src].closed++;
+      if (NOREPLY_ST.some(s  => st.includes(s))) map[src].noReply++;
+      if (IRRELEVANT_ST.some(s => st.includes(s))) map[src].irrelevant++;
     });
 
     // Spend from allInsights
@@ -677,25 +696,37 @@ async function renderWorkizSources(clientId, from, to, label) {
       Facebook: allInsights.filter(r=>inRange(r)&&r.platform==='facebook').reduce((s,r)=>s+parseFloat(r.spend||0),0)
     };
 
-    const fmtRate = (closed, total) => total > 0 ? Math.round(closed/total*100)+'%' : '0%';
-    const fmtCpl  = (sp, total)     => total > 0 && sp > 0 ? '$'+Math.round(sp/total) : '-';
+    const fmtRate = (closed, total) => total > 0 && closed > 0 ? Math.round(closed/total*100)+'%' : '-';
+    const fmtCpl  = (sp, leads)    => leads > 0 && sp > 0 ? '$'+Math.round(sp/leads) : '-';
+    const fmtSt   = (nr, ir)       => {
+      const parts = [];
+      if (nr > 0) parts.push(`אין מענה: ${nr}`);
+      if (ir > 0) parts.push(`לא רלוונטי: ${ir}`);
+      return parts.length ? parts.join(' | ') : '-';
+    };
 
-    const rows = ['Google','Facebook'].map(src => {
-      const { total, closed } = map[src];
-      const clr  = SOURCE_COLORS[src];
-      const rate = fmtRate(closed, total);
-      const cpl  = fmtCpl(spend[src], total);
+    // Display "Meta" for Facebook
+    const DISPLAY = { Google:'Google', Facebook:'Meta' };
+    const CLR     = { Google:'#ef4444', Facebook:'#3b82f6' };
+
+    const tableRows = ['Google','Facebook'].map(src => {
+      const d = map[src];
       return `<tr>
-        <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${clr};margin-left:6px"></span>${src}</td>
-        <td style="font-weight:700;text-align:center">${total}</td>
-        <td style="color:var(--green);text-align:center">${rate}</td>
-        <td style="color:var(--yellow);text-align:center">${cpl}</td>
+        <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CLR[src]};margin-left:6px"></span>${DISPLAY[src]}</td>
+        <td style="text-align:center;font-weight:700">${d.total > 0 ? d.total : '-'}</td>
+        <td style="text-align:center;color:var(--green)">${fmtRate(d.closed,d.total)}</td>
+        <td style="text-align:center;color:var(--yellow)">${fmtCpl(spend[src],d.total)}</td>
+        <td style="text-align:center;font-size:12px;color:var(--muted2)">${fmtSt(d.noReply,d.irrelevant)}</td>
       </tr>`;
     }).join('');
 
-    const totLeads  = map.Google.total  + map.Facebook.total;
-    const totClosed = map.Google.closed + map.Facebook.closed;
-    const totSpend  = spend.Google + spend.Facebook;
+    const tot = {
+      total:      map.Google.total      + map.Facebook.total,
+      closed:     map.Google.closed     + map.Facebook.closed,
+      noReply:    map.Google.noReply    + map.Facebook.noReply,
+      irrelevant: map.Google.irrelevant + map.Facebook.irrelevant,
+      spend:      spend.Google + spend.Facebook
+    };
 
     const chartId = 'src-chart-' + Date.now();
     const container = document.createElement('div');
@@ -704,14 +735,23 @@ async function renderWorkizSources(clientId, from, to, label) {
       <div style="display:grid;grid-template-columns:1fr 220px;gap:16px;margin-bottom:24px;align-items:start">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>מקור</th><th style="text-align:center">התקבלו</th><th style="text-align:center">אחוז סגירה</th><th style="text-align:center">עלות לסגירה</th></tr></thead>
+            <thead>
+              <tr>
+                <th>מקור</th>
+                <th style="text-align:center">התקבלו</th>
+                <th style="text-align:center">אחוז סגירה</th>
+                <th style="text-align:center">עלות לסגירה</th>
+                <th style="text-align:center">סטטוסים</th>
+              </tr>
+            </thead>
             <tbody>
-              ${rows}
+              ${tableRows}
               <tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
                 <td>סה"כ</td>
-                <td style="text-align:center">${totLeads}</td>
-                <td style="text-align:center;color:var(--green)">${fmtRate(totClosed,totLeads)}</td>
-                <td style="text-align:center;color:var(--yellow)">${fmtCpl(totSpend,totLeads)}</td>
+                <td style="text-align:center">${tot.total > 0 ? tot.total : '-'}</td>
+                <td style="text-align:center;color:var(--green)">${fmtRate(tot.closed,tot.total)}</td>
+                <td style="text-align:center;color:var(--yellow)">${fmtCpl(tot.spend,tot.total)}</td>
+                <td style="text-align:center;font-size:12px;color:var(--muted2)">${fmtSt(tot.noReply,tot.irrelevant)}</td>
               </tr>
             </tbody>
           </table>
@@ -726,7 +766,7 @@ async function renderWorkizSources(clientId, from, to, label) {
     new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: ['Google','Facebook'],
+        labels: ['Google','Meta'],
         datasets: [{ data: [map.Google.total, map.Facebook.total], backgroundColor: ['#ef4444','#3b82f6'], borderWidth:0 }]
       },
       options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ color:'#94a3b8', font:{size:11}, boxWidth:12 }}}}
