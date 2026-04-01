@@ -517,10 +517,10 @@ async function showClient(clientId, dateMode) {
 </div>
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">הוצאה כוללת</div><div class="kpi-val" style="color:var(--accent2)">${sym}${Math.round(ins.spend).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
-      <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}${c.goal_type==='sales'&&ins.conversion_value>0?' | '+sym+ins.conversion_value.toLocaleString('he-IL',{maximumFractionDigits:0}):''}</div></div>
+      <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'cpl')}</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">${label}</div></div>
 
-      ${c.goal_type==='sales'&&ins.conversion_value>0?`<div class="kpi-card"><div class="kpi-label">ערך מכירות</div><div class="kpi-val" style="color:var(--green)">${sym}${ins.conversion_value.toLocaleString('he-IL',{maximumFractionDigits:0})}</div><div class="kpi-sub">${label} | ROAS ${ins.spend>0?(ins.conversion_value/ins.spend).toFixed(2):'0'}x</div></div>`:''}
+      ${c.goal_type==='sales'?`<div class="kpi-card"><div class="kpi-label">ערך מכירות</div><div class="kpi-val" style="color:var(--green)">${sym}${Math.round(ins.conversion_value||0).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}${ins.spend>0&&ins.conversion_value>0?' | ROAS '+(ins.conversion_value/ins.spend).toFixed(2)+'x':''}</div></div>`:''}
       ${c.business_name === 'מקור השפע' ? `
         <div class="kpi-card" id="new-customers-card">
           <div class="kpi-label">לקוחות חדשים החודש</div>
