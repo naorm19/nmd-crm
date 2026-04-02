@@ -1175,12 +1175,12 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
     return;
   }
 
-  // ── Previous month (for comparison) ──────────────────────
-  const fromDate  = new Date(from);
-  const prevEnd   = new Date(fromDate); prevEnd.setDate(prevEnd.getDate() - 1);
-  const prevStart = new Date(prevEnd.getFullYear(), prevEnd.getMonth(), 1);
-  const prevFrom  = prevStart.toISOString().split('T')[0];
-  const prevTo    = prevEnd.toISOString().split('T')[0];
+  // ── Previous full calendar month (based on `to` date) ────
+  const toDate       = new Date(to);
+  const prevMonthEnd   = new Date(toDate.getFullYear(), toDate.getMonth(), 0); // last day of prev month
+  const prevMonthStart = new Date(prevMonthEnd.getFullYear(), prevMonthEnd.getMonth(), 1);
+  const prevFrom = prevMonthStart.toISOString().split('T')[0];
+  const prevTo   = prevMonthEnd.toISOString().split('T')[0];
   const prevRows  = await supaFetch('asif_customers',
     `?select=count,total_value&date=gte.${prevFrom}&date=lte.${prevTo}`);
 
@@ -1231,7 +1231,7 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
       <div class="kpi-card">
         <div class="kpi-label">לקוחות חדשים — חודש שעבר</div>
         <div class="kpi-val" style="color:var(--muted2)">${prevCount.toLocaleString('he-IL')}</div>
-        <div class="kpi-sub">${prevFrom.substring(0,7).split('-').reverse().join('/')}</div>
+        <div class="kpi-sub">${prevFrom.substring(0,7)} (חודש שלם)</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">ערך הזמנות</div>
