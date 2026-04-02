@@ -33,8 +33,11 @@
   .login-btn:hover { opacity:0.85; }
   .login-error { font-size:12px; color:var(--red); margin-top:10px; min-height:18px; }
   .header { background:var(--surface); border-bottom:1px solid var(--border); padding:0 24px; display:flex; align-items:center; justify-content:space-between; height:60px; position:sticky; top:0; z-index:100; }
-  .logo { font-size:18px; font-weight:800; letter-spacing:-0.5px; }
-  .logo span { color:var(--accent); }
+  .logo { display:flex; align-items:center; gap:10px; cursor:default; user-select:none; }
+  .logo-mark { width:36px; height:36px; flex-shrink:0; }
+  .logo-text { display:flex; flex-direction:column; line-height:1.1; }
+  .logo-text .t1 { font-size:15px; font-weight:900; color:#fff; letter-spacing:1px; }
+  .logo-text .t2 { font-size:9px; font-weight:600; color:var(--muted2); letter-spacing:2.5px; text-transform:uppercase; }
   .header-meta { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:16px; }
   .sync-btn { background:var(--surface2); color:var(--muted2); border:1px solid var(--border); padding:6px 14px; border-radius:6px; font-size:12px; font-family:'Heebo',sans-serif; cursor:pointer; font-weight:600; transition:opacity 0.2s; }
   .sync-btn:hover { opacity:0.85; }
@@ -161,7 +164,28 @@
 </div>
 
 <div class="header">
-  <div class="logo">NMD <span>CRM</span></div>
+  <div class="logo">
+    <svg class="logo-mark" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="36" height="36" rx="9" fill="url(#lg)"/>
+      <!-- Bar chart bars -->
+      <rect x="7"  y="20" width="4.5" height="9"  rx="1.5" fill="rgba(255,255,255,0.35)"/>
+      <rect x="13" y="15" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.55)"/>
+      <rect x="19" y="10" width="4.5" height="19" rx="1.5" fill="rgba(255,255,255,0.80)"/>
+      <!-- Trend arrow up-right -->
+      <polyline points="7,22 13,17 19,12 26,7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <polyline points="22,7 26,7 26,11"        stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <defs>
+        <linearGradient id="lg" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+          <stop offset="0%"   stop-color="#3b82f6"/>
+          <stop offset="100%" stop-color="#6366f1"/>
+        </linearGradient>
+      </defs>
+    </svg>
+    <div class="logo-text">
+      <span class="t1">NMD</span>
+      <span class="t2">CRM Dashboard</span>
+    </div>
+  </div>
   <div class="header-meta">
     <span id="last-sync">טוען...</span>
     <button class="sync-btn" onclick="init()">🔄 רענן</button>
