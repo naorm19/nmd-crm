@@ -214,6 +214,7 @@ function getMonthRange() {
 let currentDateMode    = 'yesterday';
 let currentClientId   = null;
 let ductorsSourceFilter = 'all'; // 'all' | 'google' | 'facebook'
+let asifChart1 = null, asifChart2 = null, asifChart3 = null;
 let customFrom = '';
 let customTo = '';
 
@@ -554,6 +555,7 @@ async function showClient(clientId, dateMode) {
     ${metaCamps.length?`<div class="section-title">📘 קמפיינים Meta</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(metaCamps)}</tbody></table></div>`:''}
     ${googleCamps.length?`<div class="section-title">🔴 קמפיינים Google</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(googleCamps)}</tbody></table></div>`:''}
     ${c.business_name==='The Ductors'?`<div id="leader-table-container"></div><div id="master-conv-container"><div style="padding:24px;color:var(--muted);text-align:center;font-size:13px">⏳ טוען נתוני Master Table...</div></div>`:''}
+    ${c.business_name==='אסיף'?`<div id="asif-customers-container"><div style="text-align:center;padding:32px;color:var(--muted);font-family:'Heebo',sans-serif">⏳ טוען נתוני לקוחות...</div></div>`:''}
   `;
 
   if (c.business_name === 'The Ductors') {
@@ -563,7 +565,7 @@ async function showClient(clientId, dateMode) {
   } else {
     renderChart(c, from, to, sym);
   }
-  if (c.business_name === 'אסיף מארקט') renderAsifNewCustomers(c.id, from, to, label, sym);
+  if (c.business_name === 'אסיף') renderAsifNewCustomers(c.id, from, to, label, sym);
   if (c.business_name === 'מקור השפע') await loadNewCustomersInline(c.id);
 }
 
@@ -1151,65 +1153,193 @@ async function saveLastMonthCustomers(clientId) {
   }
 }
 
-// ── אסיף - לקוחות חדשים מגיליון ────────────────────────────
-const ASIF_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQwpvURlooKYnnb3az3t3TnlDkOzJLgJWcMK2ZSeK_FFMrlJHan-c5sLKbNKGcaL2cp4y36_Q4J4kaw/pub?gid=50244389&single=true&output=csv';
-let asifSheetData = null;
-
-async function loadAsifSheet() {
-  if (asifSheetData) return asifSheetData;
-  try {
-    const res = await fetch(ASIF_SHEET_URL);
-    const text = await res.text();
-    const rows = text.trim().split('\n').slice(1).map(r => {
-      const cols = r.split(',');
-      const dateStr = (cols[0] || '').trim(); // DD/MM/YYYY
-      const value   = parseFloat((cols[4] || '0').replace(/[^0-9.]/g, '')) || 0;
-      const city    = (cols[3] || '').trim();
-      // המר ל-YYYY-MM-DD
-      const parts = dateStr.split('/');
-      const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : null;
-      return { date: isoDate, value, city };
-    }).filter(r => r.date);
-    asifSheetData = rows;
-    return rows;
-  } catch(e) { console.error('Asif sheet error:', e); return []; }
-}
-
-function getAsifStats(rows, from, to) {
-  const filtered = rows.filter(r => r.date >= from && r.date <= to);
-  const count = filtered.length;
-  const totalValue = filtered.reduce((s, r) => s + r.value, 0);
-  return { count, totalValue };
-}
-
+// ── אסיף - לקוחות חדשים מ-Supabase ─────────────────────────
 async function renderAsifNewCustomers(clientId, from, to, label, sym) {
-  const rows = await loadAsifSheet();
-  const { count, totalValue } = getAsifStats(rows, from, to);
-  const existing = document.getElementById('asif-new-customers');
-  if (existing) existing.remove();
-  const div = document.createElement('div');
-  div.id = 'asif-new-customers';
-  div.style.cssText = 'margin-bottom:24px';
-  div.innerHTML = `
-    <div class="section-title">👥 לקוחות חדשים - ${label}</div>
-    <div class="kpi-grid" style="margin-bottom:0">
+  // Destroy previous chart instances
+  [asifChart1, asifChart2, asifChart3].forEach(ch => { if (ch) { ch.destroy(); } });
+  asifChart1 = asifChart2 = asifChart3 = null;
+
+  const container = document.getElementById('asif-customers-container');
+  if (!container) return;
+
+  // ── Fetch current period ──────────────────────────────────
+  const rows = await supaFetch('asif_customers',
+    `?select=date,city,count,total_value&date=gte.${from}&date=lte.${to}&order=date.asc`);
+
+  if (!rows || !rows.length) {
+    container.innerHTML = `<div style="padding:32px;color:var(--muted);text-align:center;font-family:'Heebo',sans-serif">אין נתוני לקוחות חדשים לטווח זה</div>`;
+    return;
+  }
+
+  // ── Previous month (for comparison) ──────────────────────
+  const fromDate  = new Date(from);
+  const prevEnd   = new Date(fromDate); prevEnd.setDate(prevEnd.getDate() - 1);
+  const prevStart = new Date(prevEnd.getFullYear(), prevEnd.getMonth(), 1);
+  const prevFrom  = prevStart.toISOString().split('T')[0];
+  const prevTo    = prevEnd.toISOString().split('T')[0];
+  const prevRows  = await supaFetch('asif_customers',
+    `?select=count,total_value&date=gte.${prevFrom}&date=lte.${prevTo}`);
+
+  // ── Totals ────────────────────────────────────────────────
+  const totalCount = rows.reduce((s,r) => s + parseInt(r.count||0), 0);
+  const totalValue = rows.reduce((s,r) => s + parseFloat(r.total_value||0), 0);
+  const prevCount  = (prevRows||[]).reduce((s,r) => s + parseInt(r.count||0), 0);
+  const avgOrder   = totalCount > 0 ? Math.round(totalValue / totalCount) : 0;
+  const trend      = prevCount > 0 ? ((totalCount - prevCount) / prevCount * 100).toFixed(0) : null;
+  const trendHtml  = trend !== null
+    ? `<span style="font-size:11px;color:${trend>=0?'var(--green)':'#f43f5e'}">${trend>=0?'▲':'▼'}${Math.abs(trend)}% vs חודש שעבר</span>`
+    : '';
+
+  // ── Daily aggregation for charts ─────────────────────────
+  const dayMap = {};
+  rows.forEach(r => {
+    if (!dayMap[r.date]) dayMap[r.date] = { count:0, value:0 };
+    dayMap[r.date].count += parseInt(r.count||0);
+    dayMap[r.date].value += parseFloat(r.total_value||0);
+  });
+  const dates   = Object.keys(dayMap).sort();
+  const xLabels = dates.map(d => { const [,m,dy]=d.split('-'); return `${dy}/${m}`; });
+
+  // ── City aggregation for pie ──────────────────────────────
+  const cityMap = {};
+  rows.forEach(r => {
+    const city = (r.city||'לא ידוע').trim();
+    cityMap[city] = (cityMap[city]||0) + parseInt(r.count||0);
+  });
+  const sortedCities = Object.keys(cityMap).sort((a,b) => cityMap[b]-cityMap[a]);
+  const TOP = 9;
+  const topCities    = sortedCities.slice(0, TOP);
+  const otherCount   = sortedCities.slice(TOP).reduce((s,c) => s+cityMap[c], 0);
+  if (otherCount > 0) topCities.push('אחר');
+  const cityData     = topCities.map(c => c==='אחר' ? otherCount : cityMap[c]);
+
+  const PIE_COLORS = ['#10b981','#3b82f6','#f59e0b','#a78bfa','#f43f5e','#06b6d4','#84cc16','#fb923c','#e879f9','#94a3b8'];
+
+  // ── Render HTML ───────────────────────────────────────────
+  container.innerHTML = `
+    <div class="section-title">👥 לקוחות חדשים — ${label}</div>
+    <div class="kpi-grid" style="margin-bottom:24px">
       <div class="kpi-card">
         <div class="kpi-label">לקוחות חדשים</div>
-        <div class="kpi-val" style="color:var(--green)">${count.toLocaleString('he-IL')}</div>
-        <div class="kpi-sub">${label}</div>
+        <div class="kpi-val" style="color:var(--green)">${totalCount.toLocaleString('he-IL')}</div>
+        <div class="kpi-sub" style="display:flex;flex-direction:column;gap:3px">${label}${trendHtml?`<span>${trendHtml}</span>`:''}</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">סה"כ הזמנות</div>
+        <div class="kpi-label">לקוחות חדשים — חודש שעבר</div>
+        <div class="kpi-val" style="color:var(--muted2)">${prevCount.toLocaleString('he-IL')}</div>
+        <div class="kpi-sub">${prevFrom.substring(0,7).split('-').reverse().join('/')}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">ערך הזמנות</div>
         <div class="kpi-val" style="color:var(--accent2)">${sym}${Math.round(totalValue).toLocaleString('he-IL')}</div>
         <div class="kpi-sub">${label}</div>
       </div>
-      ${count > 0 ? `<div class="kpi-card">
-        <div class="kpi-label">ערך הזמנה בינונית</div>
-        <div class="kpi-val" style="color:var(--yellow)">${sym}${Math.round(totalValue/count).toLocaleString('he-IL')}</div>
-        <div class="kpi-sub">ממוצע ללקוח</div>
-      </div>` : ''}
-    </div>`;
-  document.getElementById('main').appendChild(div);
+      <div class="kpi-card">
+        <div class="kpi-label">ממוצע הזמנה ללקוח</div>
+        <div class="kpi-val" style="color:var(--yellow)">${sym}${avgOrder.toLocaleString('he-IL')}</div>
+        <div class="kpi-sub">ממוצע</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+      <div class="chart-card" style="margin-bottom:0">
+        <div style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px">📈 לקוחות חדשים ליום</div>
+        <div style="height:220px"><canvas id="asif-chart-daily"></canvas></div>
+      </div>
+      <div class="chart-card" style="margin-bottom:0">
+        <div style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px">💰 ערך הזמנות ליום</div>
+        <div style="height:220px"><canvas id="asif-chart-value"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-card" style="max-width:560px;margin:0 auto 20px">
+      <div style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px;text-align:center">🗺️ חלוקה לפי עיר</div>
+      <div style="height:300px"><canvas id="asif-chart-city"></canvas></div>
+    </div>
+  `;
+
+  const chartDefaults = {
+    responsive: true, maintainAspectRatio: false,
+    layout: { padding: { top: 8 } },
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color:'#64748b', font:{family:'Heebo',size:10} }, grid: { color:'rgba(255,255,255,0.04)' } },
+      y: { beginAtZero:true, ticks: { color:'#64748b', font:{family:'Heebo',size:10} }, grid: { color:'rgba(255,255,255,0.06)' } }
+    }
+  };
+
+  // ── Chart 1: לקוחות חדשים ליום ───────────────────────────
+  asifChart1 = new Chart(document.getElementById('asif-chart-daily').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: xLabels,
+      datasets: [{
+        label: 'לקוחות חדשים',
+        data: dates.map(d => dayMap[d].count),
+        borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.12)',
+        borderWidth: 2.5, tension: 0.4, fill: true,
+        pointBackgroundColor: '#10b981', pointRadius: 3, pointHoverRadius: 6
+      }]
+    },
+    options: { ...chartDefaults,
+      plugins: { ...chartDefaults.plugins,
+        tooltip: { callbacks: { label: i => 'לקוחות: ' + i.parsed.y } }
+      },
+      scales: { ...chartDefaults.scales,
+        y: { ...chartDefaults.scales.y, ticks: { ...chartDefaults.scales.y.ticks, stepSize: 1 } }
+      }
+    }
+  });
+
+  // ── Chart 2: ערך הזמנות ליום ─────────────────────────────
+  asifChart2 = new Chart(document.getElementById('asif-chart-value').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: xLabels,
+      datasets: [{
+        label: 'ערך הזמנות',
+        data: dates.map(d => Math.round(dayMap[d].value)),
+        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.10)',
+        borderWidth: 2.5, tension: 0.4, fill: true,
+        pointBackgroundColor: '#3b82f6', pointRadius: 3, pointHoverRadius: 6
+      }]
+    },
+    options: { ...chartDefaults,
+      plugins: { ...chartDefaults.plugins,
+        tooltip: { callbacks: { label: i => sym + Math.round(i.parsed.y).toLocaleString('he-IL') } }
+      }
+    }
+  });
+
+  // ── Chart 3: חלוקה לפי עיר (Doughnut) ───────────────────
+  asifChart3 = new Chart(document.getElementById('asif-chart-city').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: topCities,
+      datasets: [{
+        data: cityData,
+        backgroundColor: PIE_COLORS.slice(0, topCities.length),
+        borderColor: '#1e293b', borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { color:'#94a3b8', font:{family:'Heebo',size:11}, padding:10, boxWidth:12 }
+        },
+        tooltip: {
+          callbacks: {
+            label: i => {
+              const total = cityData.reduce((a,b)=>a+b, 0);
+              const pct   = ((i.parsed/total)*100).toFixed(1);
+              return `${i.label}: ${i.parsed} לקוחות (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
 }
 
 function toggleChart() {
