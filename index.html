@@ -542,6 +542,7 @@ async function showClient(clientId, dateMode) {
       ` : ''}
     </div>
     <div class="budget-section">${totalCard}${subCards}</div>
+    ${c.business_name==='אסיף'?`<div id="asif-customers-container"><div style="text-align:center;padding:32px;color:var(--muted);font-family:'Heebo',sans-serif">⏳ טוען נתוני לקוחות...</div></div>`:''}
     <div class="chart-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;">📈 גרף ביצועים - ${label}</span>
@@ -555,7 +556,6 @@ async function showClient(clientId, dateMode) {
     ${metaCamps.length?`<div class="section-title">📘 קמפיינים Meta</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(metaCamps)}</tbody></table></div>`:''}
     ${googleCamps.length?`<div class="section-title">🔴 קמפיינים Google</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(googleCamps)}</tbody></table></div>`:''}
     ${c.business_name==='The Ductors'?`<div id="leader-table-container"></div><div id="master-conv-container"><div style="padding:24px;color:var(--muted);text-align:center;font-size:13px">⏳ טוען נתוני Master Table...</div></div>`:''}
-    ${c.business_name==='אסיף'?`<div id="asif-customers-container"><div style="text-align:center;padding:32px;color:var(--muted);font-family:'Heebo',sans-serif">⏳ טוען נתוני לקוחות...</div></div>`:''}
   `;
 
   if (c.business_name === 'The Ductors') {
@@ -1167,7 +1167,11 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
     `?select=date,city,count,total_value&date=gte.${from}&date=lte.${to}&order=date.asc`);
 
   if (!rows || !rows.length) {
-    container.innerHTML = `<div style="padding:32px;color:var(--muted);text-align:center;font-family:'Heebo',sans-serif">אין נתוני לקוחות חדשים לטווח זה</div>`;
+    container.innerHTML = `<div style="padding:32px;text-align:center;font-family:'Heebo',sans-serif">
+      <div style="font-size:28px;margin-bottom:10px">📋</div>
+      <div style="color:var(--text);font-size:14px;font-weight:600;margin-bottom:6px">אין נתוני לקוחות לטווח זה</div>
+      <div style="color:var(--muted);font-size:12px">הגיליון מעודכן עד 30/03/2026 — נסה "30 ימים" או "החודש"</div>
+    </div>`;
     return;
   }
 
