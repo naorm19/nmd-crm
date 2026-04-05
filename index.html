@@ -451,11 +451,12 @@ function getInsightsByDay(clientId, from, to) {
   allInsights
     .filter(r => r.client_id===clientId && r.date>=from && r.date<=to)
     .forEach(r => {
-      if (!map[r.date]) map[r.date] = { spend:0, leads:0, clicks:0, conversion_value:0 };
+      if (!map[r.date]) map[r.date] = { spend:0, leads:0, clicks:0, conversion_value:0, conversions:0 };
       map[r.date].spend            += parseFloat(r.spend||0);
       map[r.date].leads            += parseInt(r.leads||0) + parseInt(r.conversions||0);
       map[r.date].clicks           += parseInt(r.clicks||0);
       map[r.date].conversion_value += parseFloat(r.conversion_value||0);
+      map[r.date].conversions      += parseInt(r.conversions||0);
     });
   return map;
 }
@@ -713,6 +714,7 @@ async function showClient(clientId, dateMode) {
     </div>
     ${metaCamps.length?`<div class="section-title">📘 קמפיינים Meta</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(metaCamps)}</tbody></table></div>`:''}
     ${googleCamps.length?`<div class="section-title">🔴 קמפיינים Google</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(googleCamps)}</tbody></table></div>`:''}
+    ${c.business_name==='דני ספרים'?`<div id="daily-sales-container" style="margin-bottom:16px"></div>`:''}
     ${c.business_name==='The Ductors'?`<div id="leader-table-container"></div><div id="master-conv-container"><div style="padding:24px;color:var(--muted);text-align:center;font-size:13px">⏳ טוען נתוני Master Table...</div></div>`:''}
   `;
 
@@ -725,6 +727,7 @@ async function showClient(clientId, dateMode) {
   }
   if (c.business_name === 'אסיף') renderAsifNewCustomers(c.id, from, to, label, sym);
   if (c.business_name === 'מקור השפע') await loadNewCustomersInline(c.id);
+  if (c.business_name === 'דני ספרים') renderDaniSales(c.id, from, to, sym);
 }
 
 function renderChart(c, from, to, sym) {
@@ -734,27 +737,78 @@ function renderChart(c, from, to, sym) {
   if (!dates.length) return;
   const ctx = document.getElementById('perf-chart')?.getContext('2d');
   if (!ctx) return;
+  const isSales = c.goal_type === 'sales';
+  const datasets = [
+    { label:'הוצאה ('+sym+')', data:dates.map(d=>dayMap[d].spend.toFixed(0)), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.3, fill:true, yAxisID:'y' },
+    { label:goalLabel(c,'cpl')+' ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
+  ];
+  if (isSales) {
+    datasets.push({ label:'ערך מכירות ('+sym+')', data:dates.map(d=>(dayMap[d].conversion_value||0).toFixed(0)), borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.1)', tension:0.3, fill:false, yAxisID:'y', spanGaps:true });
+    datasets.push({ label:'כמות מכירות', data:dates.map(d=>(dayMap[d].conversions||0)), borderColor:'#a855f7', backgroundColor:'rgba(168,85,247,0.08)', tension:0.3, fill:false, yAxisID:'yCount', spanGaps:true, borderDash:[5,4], pointRadius:4 });
+  }
+  const scales = {
+    x:{ ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
+    y:{ type:'linear', position:'right', ticks:{ color:'#60a5fa', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ color:'#1e2d45' } },
+    y1:{ type:'linear', position:'left', ticks:{ color:'#f59e0b', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ drawOnChartArea:false } }
+  };
+  if (isSales) {
+    scales.yCount = { type:'linear', position:'left', ticks:{ color:'#a855f7', callback:v=>Math.round(v)+' יח׳' }, grid:{ drawOnChartArea:false } };
+  }
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels: dates.map(d => d.slice(5)),
-      datasets: [
-        { label:'הוצאה ('+sym+')', data:dates.map(d=>dayMap[d].spend.toFixed(0)), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.3, fill:true, yAxisID:'y' },
-        { label:goalLabel(c,'cpl')+' ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true },
-        ...(c.goal_type==='sales' ? [{ label:'ערך מכירות ('+sym+')', data:dates.map(d=>(dayMap[d].conversion_value||0).toFixed(0)), borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.1)', tension:0.3, fill:false, yAxisID:'y', spanGaps:true }] : [])
-      ]
-    },
+    data: { labels: dates.map(d => d.slice(5)), datasets },
     options: {
       responsive:true, maintainAspectRatio:false,
       interaction:{ mode:'index', intersect:false },
       plugins:{ legend:{ labels:{ color:'#94a3b8', font:{ family:'Heebo' } } } },
-      scales: {
-        x:{ ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
-        y:{ type:'linear', position:'right', ticks:{ color:'#60a5fa', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ color:'#1e2d45' } },
-        y1:{ type:'linear', position:'left', ticks:{ color:'#f59e0b', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ drawOnChartArea:false } }
-      }
+      scales
     }
   });
+}
+
+async function renderDaniSales(clientId, from, to, sym) {
+  const container = document.getElementById('daily-sales-container');
+  if (!container) return;
+
+  container.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:13px;text-align:center">⏳ טוען מכירות...</div>';
+
+  let rows = [];
+  try {
+    rows = await supaFetch('daily_sales',
+      `?client_id=eq.${clientId}&date=gte.${from}&date=lte.${to}&order=date.desc`);
+  } catch(e) { console.error(e); }
+
+  if (!rows.length) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const total = rows.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+
+  const today    = new Date();
+  const fmtLabel = (dateStr) => {
+    const d    = new Date(dateStr);
+    const diff = Math.round((today - d) / 86400000);
+    if (diff === 0) return 'היום';
+    if (diff === 1) return 'אתמול';
+    if (diff === 2) return 'שלשום';
+    return dateStr.slice(5).replace('-', '/');
+  };
+
+  container.innerHTML = `
+    <div class="section-title">💰 מכירות יומיות</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:8px">
+      ${rows.map(r => `
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;text-align:center">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${fmtLabel(r.date)}</div>
+          <div style="font-size:20px;font-weight:800;color:#10b981">${sym}${parseFloat(r.amount).toLocaleString('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div style="text-align:left;font-size:12px;color:var(--muted);padding:4px 2px">
+      סה"כ תקופה: <strong style="color:#10b981">${sym}${total.toLocaleString('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>
+    </div>
+  `;
 }
 
 async function renderDuctorsChart(c, from, to, sym) {
