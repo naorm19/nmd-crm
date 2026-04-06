@@ -693,6 +693,7 @@ async function showClient(clientId, dateMode) {
     </div>
     <div class="budget-section">${totalCard}${subCards}</div>
     ${c.business_name==='אסיף'?`<div id="asif-customers-container"><div style="text-align:center;padding:32px;color:var(--muted);font-family:'Heebo',sans-serif">⏳ טוען נתוני לקוחות...</div></div>`:''}
+    ${c.business_name==='מקור השפע'?`<div id="makor-monthly-chart" class="chart-card" style="margin-bottom:16px"><div style="font-size:14px;font-weight:700;color:var(--muted2);margin-bottom:16px">👥 לקוחות חדשים — 6 חודשים אחרונים</div><canvas id="makor-nc-chart"></canvas></div>`:''}
     <div class="chart-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;">📈 גרף ביצועים - ${label}</span>
@@ -1295,6 +1296,52 @@ async function loadNewCustomersInline(clientId) {
     console.warn('new_customers fetch failed:', e?.message || e);
     valEl.textContent = '-';
   }
+  await renderMakorMonthlyChart(clientId);
+}
+
+let makorNcChart = null;
+
+async function renderMakorMonthlyChart(clientId) {
+  const rows = await supaFetch('new_customers',
+    `?client_id=eq.${clientId}&order=date.asc&limit=6&select=date,count`);
+  if (!rows?.length) return;
+
+  const HEB_MONTHS = ['ינו','פבר','מרץ','אפר','מאי','יונ','יול','אוג','ספט','אוק','נוב','דצמ'];
+  const labels = rows.map(r => {
+    const d = new Date(r.date);
+    return HEB_MONTHS[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2);
+  });
+  const values = rows.map(r => r.count || 0);
+
+  const ctx = document.getElementById('makor-nc-chart')?.getContext('2d');
+  if (!ctx) return;
+  if (makorNcChart) { makorNcChart.destroy(); makorNcChart = null; }
+
+  makorNcChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'לקוחות חדשים',
+        data: values,
+        backgroundColor: values.map((_, i) => i === values.length - 1 ? 'rgba(59,130,246,0.5)' : 'rgba(16,185,129,0.7)'),
+        borderColor:     values.map((_, i) => i === values.length - 1 ? '#3b82f6' : '#10b981'),
+        borderWidth: 2,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' לקוחות' } }
+      },
+      scales: {
+        x: { ticks: { color:'#94a3b8', font:{family:'Heebo'} }, grid: { display:false } },
+        y: { ticks: { color:'#94a3b8', font:{family:'Heebo'} }, grid: { color:'rgba(255,255,255,0.05)' }, beginAtZero: true }
+      }
+    }
+  });
 }
 
 async function saveNewCustomersInline(clientId) {
