@@ -685,17 +685,8 @@ async function showClient(clientId, dateMode) {
         <div class="kpi-card" id="new-customers-card">
           <div class="kpi-label">לקוחות חדשים החודש</div>
           <div class="kpi-val" style="color:var(--green)" id="new-customers-val">-</div>
-          <div style="display:flex;gap:8px;margin-top:12px">
-            <input id="new-customers-input" type="number" min="0" step="1" placeholder="0"
-              style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;font-family:'Heebo',sans-serif;outline:none;">
-            <button class="camp-save-btn" style="padding:8px 12px" onclick="saveNewCustomersInline(${c.id})">✓</button>
-          </div>
           <div style="margin-top:14px;font-size:12px;color:var(--muted2)">לקוחות חדשים חודש שעבר</div>
-          <div style="display:flex;gap:8px;margin-top:6px">
-            <input id="last-month-customers-input" type="number" min="0" step="1" placeholder="0"
-              style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;font-family:'Heebo',sans-serif;outline:none;">
-            <button class="camp-save-btn" style="padding:8px 12px" onclick="saveLastMonthCustomers(${c.id})">✓</button>
-          </div>
+          <div style="font-size:22px;font-weight:700;margin-top:4px;color:var(--text)" id="last-month-customers-val">-</div>
           <div id="customers-progress" style="margin-top:10px;font-size:11px;color:var(--muted2)"></div>
         </div>
       ` : ''}
@@ -1271,10 +1262,9 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
 
 async function loadNewCustomersInline(clientId) {
   const valEl      = document.getElementById('new-customers-val');
-  const inputEl    = document.getElementById('new-customers-input');
-  const lastInputEl= document.getElementById('last-month-customers-input');
+  const lastValEl  = document.getElementById('last-month-customers-val');
   const progressEl = document.getElementById('customers-progress');
-  if (!valEl || !inputEl) return;
+  if (!valEl) return;
 
   const now = new Date();
   const currDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
@@ -1290,8 +1280,7 @@ async function loadNewCustomersInline(clientId) {
     const lastCount = lastRows?.[0]?.count ? Number(lastRows[0].count) : 0;
 
     valEl.textContent = String(currCount);
-    inputEl.value = currCount > 0 ? String(currCount) : '';
-    if (lastInputEl) lastInputEl.value = lastCount > 0 ? String(lastCount) : '';
+    if (lastValEl) lastValEl.textContent = String(lastCount);
 
     if (progressEl) {
       if (lastCount > 0) {
