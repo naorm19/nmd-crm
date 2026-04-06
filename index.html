@@ -1303,43 +1303,81 @@ let makorNcChart = null;
 
 async function renderMakorMonthlyChart(clientId) {
   const rows = await supaFetch('new_customers',
-    `?client_id=eq.${clientId}&order=date.desc&limit=6&select=date,count`);
+    `?client_id=eq.${clientId}&order=date.desc&limit=6&select=date,count,revenue`);
   if (!rows?.length) return;
   rows.reverse(); // מהישן לחדש כדי שהגרף יוצג בסדר כרונולוגי
 
   const HEB_MONTHS = ['ינו','פבר','מרץ','אפר','מאי','יונ','יול','אוג','ספט','אוק','נוב','דצמ'];
-  const labels = rows.map(r => {
+  const labels   = rows.map(r => {
     const d = new Date(r.date);
     return HEB_MONTHS[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2);
   });
-  const values = rows.map(r => r.count || 0);
+  const counts   = rows.map(r => r.count   || 0);
+  const revenues = rows.map(r => r.revenue || 0);
 
   const ctx = document.getElementById('makor-nc-chart')?.getContext('2d');
   if (!ctx) return;
   if (makorNcChart) { makorNcChart.destroy(); makorNcChart = null; }
 
+  const isLast = (i) => i === counts.length - 1;
+
   makorNcChart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
-      datasets: [{
-        label: 'לקוחות חדשים',
-        data: values,
-        backgroundColor: values.map((_, i) => i === values.length - 1 ? 'rgba(59,130,246,0.5)' : 'rgba(16,185,129,0.7)'),
-        borderColor:     values.map((_, i) => i === values.length - 1 ? '#3b82f6' : '#10b981'),
-        borderWidth: 2,
-        borderRadius: 6
-      }]
+      datasets: [
+        {
+          label: 'לקוחות חדשים',
+          data: counts,
+          backgroundColor: counts.map((_, i) => isLast(i) ? 'rgba(59,130,246,0.45)' : 'rgba(16,185,129,0.65)'),
+          borderColor:     counts.map((_, i) => isLast(i) ? '#3b82f6' : '#10b981'),
+          borderWidth: 2,
+          borderRadius: 6,
+          yAxisID: 'yCount'
+        },
+        {
+          label: 'שווי הזמנות (₪)',
+          data: revenues,
+          type: 'line',
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245,158,11,0.1)',
+          pointBackgroundColor: revenues.map((_, i) => isLast(i) ? '#3b82f6' : '#f59e0b'),
+          pointRadius: 5,
+          tension: 0.35,
+          fill: true,
+          yAxisID: 'yRevenue'
+        }
+      ]
     },
     options: {
       responsive: true,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' לקוחות' } }
+        legend: { display: true, labels: { color:'#94a3b8', font:{family:'Heebo',size:11}, boxWidth:12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.dataset.yAxisID === 'yRevenue'
+              ? '₪' + ctx.parsed.y.toLocaleString()
+              : ctx.parsed.y + ' לקוחות'
+          }
+        }
       },
       scales: {
         x: { ticks: { color:'#94a3b8', font:{family:'Heebo'} }, grid: { display:false } },
-        y: { ticks: { color:'#94a3b8', font:{family:'Heebo'} }, grid: { color:'rgba(255,255,255,0.05)' }, beginAtZero: true }
+        yCount: {
+          position: 'right',
+          ticks: { color:'#10b981', font:{family:'Heebo'} },
+          grid: { color:'rgba(255,255,255,0.05)' },
+          beginAtZero: true,
+          title: { display:true, text:'לקוחות', color:'#10b981', font:{family:'Heebo',size:10} }
+        },
+        yRevenue: {
+          position: 'left',
+          ticks: { color:'#f59e0b', font:{family:'Heebo'}, callback: v => '₪'+v.toLocaleString() },
+          grid: { display:false },
+          beginAtZero: true,
+          title: { display:true, text:'שווי ₪', color:'#f59e0b', font:{family:'Heebo',size:10} }
+        }
       }
     }
   });
