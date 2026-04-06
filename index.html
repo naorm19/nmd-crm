@@ -693,16 +693,42 @@ async function showClient(clientId, dateMode) {
     </div>
     <div class="budget-section">${totalCard}${subCards}</div>
     ${c.business_name==='אסיף'?`<div id="asif-customers-container"><div style="text-align:center;padding:32px;color:var(--muted);font-family:'Heebo',sans-serif">⏳ טוען נתוני לקוחות...</div></div>`:''}
-    ${c.business_name==='מקור השפע'?`<div id="makor-monthly-chart" class="chart-card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
-        <div style="font-size:14px;font-weight:700;color:var(--muted2)">👥 <span id="makor-chart-title">לקוחות חדשים — 6 חודשים אחרונים</span></div>
-        <div style="display:flex;gap:6px;">
-          <button id="makor-filter-new"      onclick="setMakorFilter('new')"      style="padding:4px 12px;border-radius:20px;font-size:11px;font-family:'Heebo';cursor:pointer;border:1.5px solid #10b981;background:#10b981;color:#fff;">חדשים</button>
-          <button id="makor-filter-existing" onclick="setMakorFilter('existing')" style="padding:4px 12px;border-radius:20px;font-size:11px;font-family:'Heebo';cursor:pointer;border:1.5px solid var(--border);background:transparent;color:var(--muted2);">קיימים</button>
-          <button id="makor-filter-all"      onclick="setMakorFilter('all')"      style="padding:4px 12px;border-radius:20px;font-size:11px;font-family:'Heebo';cursor:pointer;border:1.5px solid var(--border);background:transparent;color:var(--muted2);">הכל</button>
+    ${c.business_name==='מקור השפע'?`<div id="makor-monthly-chart" class="chart-card" style="margin-bottom:16px;padding:24px;">
+
+      <!-- Header row -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">ניתוח לקוחות</div>
+          <div style="font-size:16px;font-weight:700;color:var(--text)" id="makor-chart-title">לקוחות חדשים</div>
+        </div>
+        <!-- Segmented control -->
+        <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px;">
+          <button id="makor-filter-new"      onclick="setMakorFilter('new')"      style="padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;font-family:'Heebo';cursor:pointer;border:none;background:#10b981;color:#fff;transition:all 0.2s;">חדשים</button>
+          <button id="makor-filter-existing" onclick="setMakorFilter('existing')" style="padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;font-family:'Heebo';cursor:pointer;border:none;background:transparent;color:var(--muted2);transition:all 0.2s;">קיימים</button>
+          <button id="makor-filter-all"      onclick="setMakorFilter('all')"      style="padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;font-family:'Heebo';cursor:pointer;border:none;background:transparent;color:var(--muted2);transition:all 0.2s;">הכל</button>
         </div>
       </div>
-      <canvas id="makor-nc-chart"></canvas>
+
+      <!-- KPI summary strip -->
+      <div id="makor-kpi-strip" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;">
+        <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+          <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;" id="makor-kpi-label-1">לקוחות חדשים</div>
+          <div style="font-size:22px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;" id="makor-kpi-val-1">—</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+          <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;" id="makor-kpi-label-2">שווי הזמנות</div>
+          <div style="font-size:22px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;" id="makor-kpi-val-2">—</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+          <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;">ממוצע הזמנה</div>
+          <div style="font-size:22px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;" id="makor-kpi-val-3">—</div>
+        </div>
+      </div>
+
+      <!-- Chart -->
+      <div style="position:relative;">
+        <canvas id="makor-nc-chart"></canvas>
+      </div>
     </div>`:''}
     ${c.business_name!=='מקור השפע'?`<div class="chart-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -1317,58 +1343,85 @@ let makorChartClientId = null;
 
 function setMakorFilter(filter) {
   makorChartFilter = filter;
-  // Update button styles
-  const btns = { new: 'new', existing: 'existing', all: 'all' };
-  Object.entries(btns).forEach(([k, id]) => {
-    const btn = document.getElementById('makor-filter-' + id);
+  const colors = { new: '#10b981', existing: '#f59e0b', all: '#6366f1' };
+  ['new','existing','all'].forEach(k => {
+    const btn = document.getElementById('makor-filter-' + k);
     if (!btn) return;
     const active = filter === k;
-    btn.style.background     = active ? (k==='existing'?'#f59e0b':k==='all'?'#3b82f6':'#10b981') : 'transparent';
-    btn.style.borderColor    = active ? (k==='existing'?'#f59e0b':k==='all'?'#3b82f6':'#10b981') : 'var(--border)';
-    btn.style.color          = active ? '#fff' : 'var(--muted2)';
+    btn.style.background = active ? colors[k] : 'transparent';
+    btn.style.color      = active ? '#fff' : 'var(--muted2)';
   });
-  const titles = { new:'לקוחות חדשים — 6 חודשים אחרונים', existing:'לקוחות קיימים — 6 חודשים אחרונים', all:'כלל הלקוחות — 6 חודשים אחרונים' };
+  const titles = { new:'לקוחות חדשים', existing:'לקוחות קיימים', all:'כלל הלקוחות' };
   const titleEl = document.getElementById('makor-chart-title');
   if (titleEl) titleEl.textContent = titles[filter];
   if (makorChartRows) drawMakorChart(makorChartRows);
 }
 
+function updateMakorKpis(rows) {
+  if (!rows?.length) return;
+  // Use last complete month (second to last, as last is current partial month)
+  const ref = rows.length >= 2 ? rows[rows.length - 2] : rows[rows.length - 1];
+  let val1, val2, label1;
+  if (makorChartFilter === 'new') {
+    val1   = (ref.count || 0).toLocaleString();
+    val2   = '₪' + Math.round(ref.revenue || 0).toLocaleString();
+    label1 = 'לקוחות חדשים';
+  } else if (makorChartFilter === 'existing') {
+    val1   = (ref.existing_orders || 0).toLocaleString();
+    val2   = '₪' + Math.round(ref.existing_revenue || 0).toLocaleString();
+    label1 = 'הזמנות קיימים';
+  } else {
+    val1   = (ref.total_orders || 0).toLocaleString();
+    val2   = '₪' + Math.round(ref.total_revenue || 0).toLocaleString();
+    label1 = 'סה"כ הזמנות';
+  }
+  const totalOrders = makorChartFilter === 'new'
+    ? (ref.count || 0)
+    : makorChartFilter === 'existing'
+      ? (ref.existing_orders || 0)
+      : (ref.total_orders || 0);
+  const totalRev = makorChartFilter === 'new'
+    ? (ref.revenue || 0)
+    : makorChartFilter === 'existing'
+      ? (ref.existing_revenue || 0)
+      : (ref.total_revenue || 0);
+  const avg = totalOrders > 0 ? Math.round(totalRev / totalOrders) : 0;
+
+  const el1 = document.getElementById('makor-kpi-label-1');
+  const ev1 = document.getElementById('makor-kpi-val-1');
+  const ev2 = document.getElementById('makor-kpi-val-2');
+  const ev3 = document.getElementById('makor-kpi-val-3');
+  if (el1) el1.textContent = label1 + ' (חודש שעבר)';
+  if (ev1) ev1.textContent = val1;
+  if (ev2) ev2.textContent = val2;
+  if (ev3) ev3.textContent = '₪' + avg.toLocaleString();
+}
+
 function drawMakorChart(rows) {
+  updateMakorKpis(rows);
+
   const HEB_MONTHS = ['ינו','פבר','מרץ','אפר','מאי','יונ','יול','אוג','ספט','אוק','נוב','דצמ'];
   const labels = rows.map(r => {
     const d = new Date(r.date);
-    return HEB_MONTHS[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2);
+    return HEB_MONTHS[d.getMonth()] + " '" + String(d.getFullYear()).slice(2);
   });
 
-  let counts, revenues, barColor, barBorder, lineColor, countLabel;
   const isLast = i => i === rows.length - 1;
+  const cfg = {
+    new:      { counts: rows.map(r=>r.count||0),           revenues: rows.map(r=>r.revenue||0),          barC:'#10b981', barCA:'rgba(16,185,129,', lineC:'#34d399', countLabel:'לקוחות חדשים'  },
+    existing: { counts: rows.map(r=>r.existing_orders||0), revenues: rows.map(r=>r.existing_revenue||0), barC:'#f59e0b', barCA:'rgba(245,158,11,',  lineC:'#fbbf24', countLabel:'הזמנות קיימים' },
+    all:      { counts: rows.map(r=>r.total_orders||0),    revenues: rows.map(r=>r.total_revenue||0),    barC:'#6366f1', barCA:'rgba(99,102,241,',  lineC:'#818cf8', countLabel:'סה"כ הזמנות'   }
+  }[makorChartFilter];
 
-  if (makorChartFilter === 'new') {
-    counts    = rows.map(r => r.count   || 0);
-    revenues  = rows.map(r => r.revenue || 0);
-    barColor  = i => isLast(i) ? 'rgba(59,130,246,0.45)' : 'rgba(16,185,129,0.65)';
-    barBorder = i => isLast(i) ? '#3b82f6' : '#10b981';
-    lineColor = '#f59e0b';
-    countLabel = 'לקוחות חדשים';
-  } else if (makorChartFilter === 'existing') {
-    counts    = rows.map(r => r.existing_orders  || 0);
-    revenues  = rows.map(r => r.existing_revenue || 0);
-    barColor  = i => isLast(i) ? 'rgba(59,130,246,0.45)' : 'rgba(245,158,11,0.65)';
-    barBorder = i => isLast(i) ? '#3b82f6' : '#f59e0b';
-    lineColor = '#a855f7';
-    countLabel = 'הזמנות לקוחות קיימים';
-  } else { // all
-    counts    = rows.map(r => r.total_orders  || 0);
-    revenues  = rows.map(r => r.total_revenue || 0);
-    barColor  = i => isLast(i) ? 'rgba(59,130,246,0.45)' : 'rgba(99,102,241,0.65)';
-    barBorder = i => isLast(i) ? '#3b82f6' : '#6366f1';
-    lineColor = '#f59e0b';
-    countLabel = 'סה"כ הזמנות';
-  }
+  const { counts, revenues, barC, barCA, lineC, countLabel } = cfg;
 
   const ctx = document.getElementById('makor-nc-chart')?.getContext('2d');
   if (!ctx) return;
   if (makorNcChart) { makorNcChart.destroy(); makorNcChart = null; }
+
+  // Gradient for bars
+  const barColors = counts.map((_, i) => isLast(i) ? 'rgba(148,163,184,0.25)' : barCA + '0.75)');
+  const barBorders = counts.map((_, i) => isLast(i) ? 'rgba(148,163,184,0.5)' : barC);
 
   makorNcChart = new Chart(ctx, {
     type: 'bar',
@@ -1378,20 +1431,30 @@ function drawMakorChart(rows) {
         {
           label: countLabel,
           data: counts,
-          backgroundColor: counts.map((_, i) => barColor(i)),
-          borderColor:     counts.map((_, i) => barBorder(i)),
-          borderWidth: 2, borderRadius: 6,
-          yAxisID: 'yCount'
+          backgroundColor: barColors,
+          borderColor: barBorders,
+          borderWidth: 0,
+          borderRadius: 8,
+          borderSkipped: false,
+          yAxisID: 'yCount',
+          order: 2
         },
         {
           label: 'שווי הזמנות (₪)',
           data: revenues,
           type: 'line',
-          borderColor: lineColor,
-          backgroundColor: lineColor.replace(')', ',0.1)').replace('rgb', 'rgba'),
-          pointBackgroundColor: revenues.map((_, i) => isLast(i) ? '#3b82f6' : lineColor),
-          pointRadius: 5, tension: 0.35, fill: true,
-          yAxisID: 'yRevenue'
+          borderColor: lineC,
+          backgroundColor: 'transparent',
+          pointBackgroundColor: revenues.map((_, i) => isLast(i) ? 'rgba(148,163,184,0.6)' : lineC),
+          pointBorderColor: '#1e293b',
+          pointBorderWidth: 2,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: 0.4,
+          fill: false,
+          borderWidth: 2.5,
+          yAxisID: 'yRevenue',
+          order: 1
         }
       ]
     },
@@ -1399,27 +1462,61 @@ function drawMakorChart(rows) {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: true, labels: { color:'#94a3b8', font:{family:'Heebo',size:11}, boxWidth:12 } },
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: {
+            color: '#64748b',
+            font: { family:'Heebo', size:11 },
+            boxWidth: 10, boxHeight: 10,
+            padding: 16,
+            usePointStyle: true
+          }
+        },
         tooltip: {
+          backgroundColor: '#1e293b',
+          borderColor: 'rgba(255,255,255,0.08)',
+          borderWidth: 1,
+          padding: 12,
+          titleColor: '#94a3b8',
+          bodyColor: '#f1f5f9',
+          titleFont: { family:'Heebo', size:11 },
+          bodyFont: { family:'Heebo', size:13, weight:'600' },
           callbacks: {
-            label: ctx => ctx.dataset.yAxisID === 'yRevenue'
-              ? '₪' + Math.round(ctx.parsed.y).toLocaleString()
-              : ctx.parsed.y + (makorChartFilter==='new' ? ' לקוחות' : ' הזמנות')
+            title: items => items[0].label,
+            label: item => {
+              if (item.dataset.yAxisID === 'yRevenue') {
+                return '  💰 ₪' + Math.round(item.parsed.y).toLocaleString();
+              }
+              const suffix = makorChartFilter === 'new' ? ' לקוחות' : ' הזמנות';
+              return '  📦 ' + item.parsed.y.toLocaleString() + suffix;
+            }
           }
         }
       },
       scales: {
-        x: { ticks:{ color:'#94a3b8', font:{family:'Heebo'} }, grid:{display:false} },
+        x: {
+          ticks: { color:'#475569', font:{ family:'Heebo', size:11 } },
+          grid: { display:false },
+          border: { display:false }
+        },
         yCount: {
           position: 'right',
-          ticks:{ color:'#94a3b8', font:{family:'Heebo'} },
-          grid:{ color:'rgba(255,255,255,0.05)' },
+          ticks: { color:'#475569', font:{ family:'Heebo', size:10 }, maxTicksLimit:5 },
+          grid: { color:'rgba(255,255,255,0.04)', drawBorder:false },
+          border: { display:false, dash:[4,4] },
           beginAtZero: true
         },
         yRevenue: {
           position: 'left',
-          ticks:{ color:'#f59e0b', font:{family:'Heebo'}, callback: v => '₪'+Math.round(v).toLocaleString() },
-          grid:{ display:false },
+          ticks: {
+            color:'#475569',
+            font:{ family:'Heebo', size:10 },
+            maxTicksLimit: 5,
+            callback: v => '₪' + (v>=1000 ? Math.round(v/1000)+'K' : v)
+          },
+          grid: { display:false },
+          border: { display:false },
           beginAtZero: true
         }
       }
