@@ -1614,16 +1614,16 @@ async function runSync() {
   btn.textContent = '⏳ מסנכרן...';
   btn.disabled = true;
   try {
-    // קרא ל-webhook-server המקומי (port 3001)
     const res = await fetch('http://localhost:3001/sync', { method: 'POST' });
-    if (res.ok) {
-      showToast('✅ סנכרון הושלם!');
+    const data = await res.json();
+    if (data.ok) {
+      showToast('✅ ' + (data.steps?.adSpend||'') + ' | ' + (data.steps?.leads||''));
       await init();
     } else {
-      showToast('❌ שגיאת סנכרון', 'red');
+      showToast('❌ שגיאה: ' + (data.steps?.adSpend||'') + ' ' + (data.steps?.leads||''), 'red');
     }
   } catch(e) {
-    showToast('❌ אין חיבור לשרת', 'red');
+    showToast('❌ שרת הסנכרון לא פעיל — הפעל את start-sync-server.bat', 'red');
   } finally {
     btn.textContent = '⚡ סנכרן עכשיו';
     btn.disabled = false;
