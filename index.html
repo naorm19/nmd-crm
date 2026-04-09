@@ -1683,15 +1683,9 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
-      <div class="chart-card" style="margin-bottom:0">
-        <div style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px">📈 לקוחות חדשים ליום</div>
-        <div style="height:220px"><canvas id="asif-chart-daily"></canvas></div>
-      </div>
-      <div class="chart-card" style="margin-bottom:0">
-        <div style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px">💰 ערך הזמנות ליום</div>
-        <div style="height:220px"><canvas id="asif-chart-value"></canvas></div>
-      </div>
+    <div class="chart-card" style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px">📈 לקוחות חדשים וערך הזמנות ליום</div>
+      <div style="height:260px"><canvas id="asif-chart-daily"></canvas></div>
     </div>
     <div class="chart-card" style="max-width:560px;margin:0 auto 20px">
       <div style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px;text-align:center">🗺️ חלוקה לפי עיר</div>
@@ -1709,45 +1703,64 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
     }
   };
 
-  // ── Chart 1: לקוחות חדשים ליום ───────────────────────────
+  // ── Chart 1: לקוחות חדשים + ערך הזמנות (משולב) ──────────
   asifChart1 = new Chart(document.getElementById('asif-chart-daily').getContext('2d'), {
     type: 'line',
     data: {
       labels: xLabels,
-      datasets: [{
-        label: 'לקוחות חדשים',
-        data: dates.map(d => dayMap[d].count),
-        borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.12)',
-        borderWidth: 2.5, tension: 0.4, fill: true,
-        pointBackgroundColor: '#10b981', pointRadius: 3, pointHoverRadius: 6
-      }]
+      datasets: [
+        {
+          label: 'לקוחות חדשים',
+          data: dates.map(d => dayMap[d].count),
+          borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.10)',
+          borderWidth: 2.5, tension: 0.4, fill: true,
+          pointBackgroundColor: '#10b981', pointBorderColor: '#1e293b', pointBorderWidth: 1.5,
+          pointRadius: 4, pointHoverRadius: 7,
+          yAxisID: 'yCount', order: 2
+        },
+        {
+          label: 'ערך הזמנות (₪)',
+          data: dates.map(d => Math.round(dayMap[d].value)),
+          borderColor: '#3b82f6', backgroundColor: 'transparent',
+          borderWidth: 2.5, tension: 0.4, fill: false,
+          pointBackgroundColor: '#3b82f6', pointBorderColor: '#1e293b', pointBorderWidth: 1.5,
+          pointRadius: 4, pointHoverRadius: 7,
+          yAxisID: 'yValue', order: 1
+        }
+      ]
     },
-    options: { ...chartDefaults,
-      plugins: { ...chartDefaults.plugins,
-        tooltip: { callbacks: { label: i => 'לקוחות: ' + i.parsed.y } }
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true, position: 'bottom',
+          labels: { color:'#64748b', font:{family:'Heebo',size:11}, boxWidth:10, boxHeight:10, padding:16, usePointStyle:true }
+        },
+        tooltip: {
+          backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1,
+          padding: 12, titleColor:'#94a3b8', bodyColor:'#f1f5f9',
+          titleFont:{family:'Heebo',size:11}, bodyFont:{family:'Heebo',size:13,weight:'600'},
+          callbacks: {
+            label: i => i.dataset.yAxisID === 'yValue'
+              ? '  💰 ' + sym + Math.round(i.parsed.y).toLocaleString('he-IL')
+              : '  👤 ' + i.parsed.y + ' לקוחות'
+          }
+        }
       },
-      scales: { ...chartDefaults.scales,
-        y: { ...chartDefaults.scales.y, ticks: { ...chartDefaults.scales.y.ticks, stepSize: 1 } }
-      }
-    }
-  });
-
-  // ── Chart 2: ערך הזמנות ליום ─────────────────────────────
-  asifChart2 = new Chart(document.getElementById('asif-chart-value').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels: xLabels,
-      datasets: [{
-        label: 'ערך הזמנות',
-        data: dates.map(d => Math.round(dayMap[d].value)),
-        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.10)',
-        borderWidth: 2.5, tension: 0.4, fill: true,
-        pointBackgroundColor: '#3b82f6', pointRadius: 3, pointHoverRadius: 6
-      }]
-    },
-    options: { ...chartDefaults,
-      plugins: { ...chartDefaults.plugins,
-        tooltip: { callbacks: { label: i => sym + Math.round(i.parsed.y).toLocaleString('he-IL') } }
+      scales: {
+        x: { ticks:{color:'#64748b',font:{family:'Heebo',size:10}}, grid:{color:'rgba(255,255,255,0.04)'}, border:{display:false} },
+        yCount: {
+          position: 'right', beginAtZero: true,
+          ticks: { color:'#10b981', font:{family:'Heebo',size:10}, stepSize:1, maxTicksLimit:6 },
+          grid: { color:'rgba(255,255,255,0.04)' }, border:{display:false}
+        },
+        yValue: {
+          position: 'left', beginAtZero: true,
+          ticks: { color:'#3b82f6', font:{family:'Heebo',size:10}, maxTicksLimit:6,
+            callback: v => sym + (v>=1000 ? Math.round(v/1000)+'K' : v) },
+          grid: { display:false }, border:{display:false}
+        }
       }
     }
   });
