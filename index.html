@@ -784,7 +784,7 @@ function renderChart(c, from, to, sym) {
   }
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: { labels: dates.map(d => d.slice(5)), datasets },
+    data: { labels: dates.map(d => `${d.split('-')[2]}/${d.split('-')[1]}`), datasets },
     options: {
       responsive:true, maintainAspectRatio:false,
       interaction:{ mode:'index', intersect:false },
@@ -820,7 +820,7 @@ async function renderDaniSales(clientId, from, to, sym) {
     if (diff === 0) return 'היום';
     if (diff === 1) return 'אתמול';
     if (diff === 2) return 'שלשום';
-    return dateStr.slice(5).replace('-', '/');
+    return `${dateStr.split('-')[2]}/${dateStr.split('-')[1]}`;
   };
 
   container.innerHTML = `
