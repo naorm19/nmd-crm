@@ -766,7 +766,11 @@ function renderChart(c, from, to, sym) {
   const ctx = document.getElementById('perf-chart')?.getContext('2d');
   if (!ctx) return;
   const isSales = c.goal_type === 'sales';
-  const datasets = [
+  const showLeadsInstead = ['קאסה קליניק','שחר אהרוני'].includes(c.business_name);
+  const datasets = showLeadsInstead ? [
+    { label:'כמות לידים', data:dates.map(d=>dayMap[d].leads||0), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.12)', tension:0.3, fill:true, yAxisID:'y', pointRadius:3, pointHoverRadius:6 },
+    { label:goalLabel(c,'cpl')+' ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
+  ] : [
     { label:'הוצאה ('+sym+')', data:dates.map(d=>dayMap[d].spend.toFixed(0)), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.3, fill:true, yAxisID:'y' },
     { label:goalLabel(c,'cpl')+' ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
   ];
@@ -776,7 +780,7 @@ function renderChart(c, from, to, sym) {
   }
   const scales = {
     x:{ ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
-    y:{ type:'linear', position:'right', ticks:{ color:'#60a5fa', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ color:'#1e2d45' } },
+    y:{ type:'linear', position:'right', ticks:{ color:'#60a5fa', callback: v => showLeadsInstead ? Math.round(v)+' לידים' : sym+Number(v).toLocaleString('he-IL') }, grid:{ color:'#1e2d45' } },
     y1:{ type:'linear', position:'left', ticks:{ color:'#f59e0b', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ drawOnChartArea:false } }
   };
   if (isSales) {
