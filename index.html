@@ -1250,9 +1250,9 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
       return `<tr>
         <td style="font-weight:700"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CLR[src]};margin-left:6px;vertical-align:middle"></span>${DISPLAY[src]}</td>
         <td style="text-align:center;color:var(--accent2);font-weight:700">${fmtMoney(pd.spend)}</td>
-        <td style="text-align:center;color:var(--green)">${pd.leads > 0 ? pd.leads : '-'}</td>
         <td style="text-align:center;font-weight:700;color:var(--blue,#60a5fa)">${d.received > 0 ? d.received : '-'}</td>
-        <td style="text-align:center;color:var(--green)">${fmtRate(d.received, pd.leads)}</td>
+        <td style="text-align:center;color:var(--green)">${d.closed > 0 ? d.closed : '-'}</td>
+        <td style="text-align:center;color:var(--green)">${d.received > 0 && d.closed > 0 ? (d.closed/d.received*100).toFixed(1)+'%' : '-'}</td>
         <td style="text-align:center;font-size:11px;color:var(--muted2)">${fmtSt(d.not_relevant, d.no_answer)}</td>
         <td style="text-align:center;color:var(--yellow);font-weight:700">${fmtClose(pd.spend, d.received)}</td>
       </tr>`;
@@ -1263,6 +1263,7 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
       spend:    acc.spend    + (platData[src].spend  || 0),
       platLeads:acc.platLeads+ (platData[src].leads  || 0),
       received: acc.received + (map[src].received    || 0),
+      closed:   acc.closed   + (map[src].closed      || 0),
       nr:       acc.nr       + (map[src].not_relevant|| 0),
       na:       acc.na       + (map[src].no_answer   || 0)
     }), { spend:0, platLeads:0, received:0, nr:0, na:0 });
@@ -1276,18 +1277,18 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
             <th style="text-align:center">הוצאה</th>
             <th style="text-align:center">לידים שנכנסו</th>
             <th style="text-align:center">לידים שנסגרו</th>
-            <th style="text-align:center">אחוז סגירה</th>
+            <th style="text-align:center">% סגירה</th>
             <th style="text-align:center">סטטוסים</th>
-            <th style="text-align:center">עלות סופית לסגירה</th>
+            <th style="text-align:center">עלות לסגירה</th>
           </tr></thead>
           <tbody>
             ${tableRows}
             <tr style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
               <td>סה"כ</td>
               <td style="text-align:center;color:var(--accent2)">${fmtMoney(tot.spend)}</td>
-              <td style="text-align:center;color:var(--green)">${tot.platLeads > 0 ? tot.platLeads : '-'}</td>
               <td style="text-align:center;color:var(--blue,#60a5fa)">${tot.received > 0 ? tot.received : '-'}</td>
-              <td style="text-align:center;color:var(--green)">${fmtRate(tot.received, tot.platLeads)}</td>
+              <td style="text-align:center;color:var(--green)">${tot.closed > 0 ? tot.closed : '-'}</td>
+              <td style="text-align:center;color:var(--green)">${tot.received > 0 && tot.closed > 0 ? (tot.closed/tot.received*100).toFixed(1)+'%' : '-'}</td>
               <td style="text-align:center;font-size:11px;color:var(--muted2)">${fmtSt(tot.nr, tot.na)}</td>
               <td style="text-align:center;color:var(--yellow)">${fmtClose(tot.spend, tot.received)}</td>
             </tr>
