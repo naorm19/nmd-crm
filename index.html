@@ -271,6 +271,8 @@ function getDateRange(mode) {
     const e = new Date(now.getFullYear(), now.getMonth(), 0);
     return { from:fmt(s), to:fmt(e), label:'החודש שעבר' };
   }
+  if (mode==='year') { const d=new Date(now); d.setFullYear(d.getFullYear()-1); return { from:fmt(d), to:today, label:'שנה אחרונה' }; }
+  if (mode==='alltime') { return { from:'2024-01-01', to:today, label:'כל הזמן' }; }
   if (mode==='custom' && customFrom && customTo) { return { from:customFrom, to:customTo, label:`${fmtHeb(customFrom)} – ${fmtHeb(customTo)}` }; }
   return { from:today, to:today, label:'היום' };
 }
@@ -285,6 +287,14 @@ let currentDateMode    = 'yesterday';
 let currentClientId   = null;
 let ductorsSourceFilter = 'all'; // 'all' | 'google' | 'facebook'
 let asifChart1 = null, asifChart2 = null, asifChart3 = null;
+let asifAllRows = [];
+let asifChartPeriod = 'daily';
+let asifChartSym = '₪';
+let perfChartPeriod = 'daily';
+let perfChartClient = null;
+let perfChartFrom   = null;
+let perfChartTo     = null;
+let perfChartSym    = '₪';
 let customFrom = '';
 let customTo = '';
 
@@ -544,6 +554,8 @@ async function showClient(clientId, dateMode) {
     null,
     { mode:'month',     icon:'🗓', lbl:'החודש הנוכחי' },
     { mode:'lastmonth', icon:'◀️', lbl:'החודש שעבר' },
+    { mode:'year',      icon:'📊', lbl:'שנה אחרונה' },
+    { mode:'alltime',   icon:'🗃️', lbl:'כל הזמן' },
     null,
     { mode:'custom',    icon:'✏️', lbl:'טווח מותאם...' },
   ];
@@ -689,6 +701,12 @@ async function showClient(clientId, dateMode) {
           <div style="font-size:22px;font-weight:700;margin-top:4px;color:var(--text)" id="last-month-customers-val">-</div>
           <div id="customers-progress" style="margin-top:10px;font-size:11px;color:var(--muted2)"></div>
         </div>
+        <div class="kpi-card" id="new-customers-yesterday-card">
+          <div class="kpi-label">לקוחות חדשים אתמול</div>
+          <div class="kpi-val" style="color:var(--accent2)" id="new-customers-yesterday-val">-</div>
+          <div style="margin-top:14px;font-size:12px;color:var(--muted2)">ערך הזמנות אתמול</div>
+          <div style="font-size:22px;font-weight:700;margin-top:4px;color:var(--text)" id="new-customers-yesterday-rev">-</div>
+        </div>
       ` : ''}
     </div>
     <div class="budget-section">${totalCard}${subCards}</div>
@@ -735,6 +753,11 @@ async function showClient(clientId, dateMode) {
         <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;">📈 גרף ביצועים - ${label}</span>
         <div style="display:flex;gap:8px;align-items:center">
           ${c.business_name==='The Ductors'?`<div id="ductors-src-filter"></div>`:''}
+          <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px">
+            <button id="perf-period-daily" onclick="setPerfPeriod('daily')" style="padding:3px 10px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#3b82f6;color:#fff;transition:all 0.2s">יומי</button>
+            <button id="perf-period-monthly" onclick="setPerfPeriod('monthly')" style="padding:3px 10px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s">חודשי</button>
+            <button id="perf-period-yearly" onclick="setPerfPeriod('yearly')" style="padding:3px 10px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s">שנתי</button>
+          </div>
           <button onclick="toggleChart()" id="chart-toggle-btn" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;">הסתר</button>
         </div>
       </div>
@@ -759,24 +782,87 @@ async function showClient(clientId, dateMode) {
 }
 
 function renderChart(c, from, to, sym) {
+  // Save state for period toggle re-renders
+  perfChartClient = c;
+  perfChartFrom   = from;
+  perfChartTo     = to;
+  perfChartSym    = sym;
+  // Reset to daily on every new client/date load
+  perfChartPeriod = 'daily';
+  ['daily','monthly','yearly'].forEach(p => {
+    const btn = document.getElementById(`perf-period-${p}`);
+    if (!btn) return;
+    btn.style.background = p === 'daily' ? '#3b82f6' : 'transparent';
+    btn.style.color      = p === 'daily' ? '#fff'    : 'var(--muted2)';
+  });
+  _drawPerfChart();
+}
+
+function setPerfPeriod(period) {
+  perfChartPeriod = period;
+  ['daily','monthly','yearly'].forEach(p => {
+    const btn = document.getElementById(`perf-period-${p}`);
+    if (!btn) return;
+    btn.style.background = p === period ? '#3b82f6' : 'transparent';
+    btn.style.color      = p === period ? '#fff'    : 'var(--muted2)';
+  });
+  _drawPerfChart();
+}
+
+function _aggregateInsights(clientId, from, to, period) {
+  const MONTH_HE = ['','ינו','פבר','מרץ','אפר','מאי','יוני','יולי','אוג','ספט','אוק','נוב','דצמ'];
+  const map = {};
+  allInsights
+    .filter(r => r.client_id===clientId && r.date>=from && r.date<=to)
+    .forEach(r => {
+      let key, label;
+      if (period === 'monthly') {
+        const [y,m] = r.date.split('-');
+        key   = `${y}-${m}`;
+        label = `${MONTH_HE[parseInt(m)]} ${y.slice(2)}`;
+      } else if (period === 'yearly') {
+        key   = r.date.split('-')[0];
+        label = key;
+      } else {
+        key   = r.date;
+        const [,m,d] = r.date.split('-');
+        label = `${d}/${m}`;
+      }
+      if (!map[key]) map[key] = { label, spend:0, leads:0, clicks:0, conversion_value:0, conversions:0 };
+      map[key].spend            += parseFloat(r.spend||0);
+      map[key].leads            += parseInt(r.leads||0) + parseInt(r.conversions||0);
+      map[key].clicks           += parseInt(r.clicks||0);
+      map[key].conversion_value += parseFloat(r.conversion_value||0);
+      map[key].conversions      += parseInt(r.conversions||0);
+    });
+  const keys = Object.keys(map).sort();
+  return { keys, map };
+}
+
+function _drawPerfChart() {
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
-  const dayMap = getInsightsByDay(c.id, from, to);
-  const dates  = Object.keys(dayMap).sort();
-  if (!dates.length) return;
+  if (!perfChartClient) return;
   const ctx = document.getElementById('perf-chart')?.getContext('2d');
   if (!ctx) return;
+
+  const { keys, map } = _aggregateInsights(perfChartClient.id, perfChartFrom, perfChartTo, perfChartPeriod);
+  if (!keys.length) return;
+
+  const sym    = perfChartSym;
+  const c      = perfChartClient;
   const isSales = c.goal_type === 'sales';
   const showLeadsInstead = ['קאסה קליניק','שחר אהרוני'].includes(c.business_name);
+
   const datasets = showLeadsInstead ? [
-    { label:'כמות לידים', data:dates.map(d=>dayMap[d].leads||0), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.12)', tension:0.3, fill:true, yAxisID:'y', pointRadius:3, pointHoverRadius:6 },
-    { label:goalLabel(c,'cpl')+' ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
+    { label:'כמות לידים', data:keys.map(k=>map[k].leads||0), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.12)', tension:0.3, fill:true, yAxisID:'y', pointRadius:3, pointHoverRadius:6 },
+    { label:goalLabel(c,'cpl')+' ('+sym+')', data:keys.map(k=>map[k].leads>0?(map[k].spend/map[k].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
   ] : [
-    { label:'הוצאה ('+sym+')', data:dates.map(d=>dayMap[d].spend.toFixed(0)), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.3, fill:true, yAxisID:'y' },
-    { label:goalLabel(c,'cpl')+' ('+sym+')', data:dates.map(d=>dayMap[d].leads>0?(dayMap[d].spend/dayMap[d].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
+    { label:'הוצאה ('+sym+')', data:keys.map(k=>map[k].spend.toFixed(0)), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.3, fill:true, yAxisID:'y' },
+    { label:goalLabel(c,'cpl')+' ('+sym+')', data:keys.map(k=>map[k].leads>0?(map[k].spend/map[k].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
   ];
   if (isSales) {
-    datasets.push({ label:'ערך מכירות ('+sym+')', data:dates.map(d=>(dayMap[d].conversion_value||0).toFixed(0)), borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.1)', tension:0.3, fill:false, yAxisID:'y', spanGaps:true });
-    datasets.push({ label:'כמות מכירות', data:dates.map(d=>(dayMap[d].conversions||0)), borderColor:'#a855f7', backgroundColor:'rgba(168,85,247,0.08)', tension:0.3, fill:false, yAxisID:'yCount', spanGaps:true, borderDash:[5,4], pointRadius:4 });
+    datasets.push({ label:'ערך מכירות ('+sym+')', data:keys.map(k=>(map[k].conversion_value||0).toFixed(0)), borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.1)', tension:0.3, fill:false, yAxisID:'y', spanGaps:true });
+    datasets.push({ label:'כמות מכירות', data:keys.map(k=>(map[k].conversions||0)), borderColor:'#a855f7', backgroundColor:'rgba(168,85,247,0.08)', tension:0.3, fill:false, yAxisID:'yCount', spanGaps:true, borderDash:[5,4], pointRadius:4 });
   }
   const scales = {
     x:{ ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
@@ -788,7 +874,7 @@ function renderChart(c, from, to, sym) {
   }
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: { labels: dates.map(d => `${d.split('-')[2]}/${d.split('-')[1]}`), datasets },
+    data: { labels: keys.map(k => map[k].label), datasets },
     options: {
       responsive:true, maintainAspectRatio:false,
       interaction:{ mode:'index', intersect:false },
@@ -1306,23 +1392,33 @@ async function loadNewCustomersInline(clientId) {
   const valEl      = document.getElementById('new-customers-val');
   const lastValEl  = document.getElementById('last-month-customers-val');
   const progressEl = document.getElementById('customers-progress');
+  const yestValEl  = document.getElementById('new-customers-yesterday-val');
+  const yestRevEl  = document.getElementById('new-customers-yesterday-rev');
   if (!valEl) return;
 
   const now = new Date();
-  const currDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const pad = n => String(n).padStart(2,'0');
+  const currDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
   const lm = new Date(now.getFullYear(), now.getMonth()-1, 1);
-  const lastDate = `${lm.getFullYear()}-${String(lm.getMonth()+1).padStart(2,'0')}-01`;
+  const lastDate = `${lm.getFullYear()}-${pad(lm.getMonth()+1)}-01`;
+  const yest = new Date(now); yest.setDate(yest.getDate()-1);
+  const yestDate = `${yest.getFullYear()}-${pad(yest.getMonth()+1)}-${pad(yest.getDate())}`;
 
   try {
-    const [currRows, lastRows] = await Promise.all([
+    const [currRows, lastRows, yestRows] = await Promise.all([
       supaFetch('new_customers', `?client_id=eq.${clientId}&date=eq.${currDate}&select=count`),
-      supaFetch('new_customers', `?client_id=eq.${clientId}&date=eq.${lastDate}&select=count`)
+      supaFetch('new_customers', `?client_id=eq.${clientId}&date=eq.${lastDate}&select=count`),
+      supaFetch('new_customers', `?client_id=eq.${clientId}&date=eq.${yestDate}&select=count,revenue`)
     ]);
     const currCount = currRows?.[0]?.count ? Number(currRows[0].count) : 0;
     const lastCount = lastRows?.[0]?.count ? Number(lastRows[0].count) : 0;
+    const yestCount = yestRows?.[0]?.count ? Number(yestRows[0].count) : 0;
+    const yestRev   = yestRows?.[0]?.revenue ? Number(yestRows[0].revenue) : 0;
 
     valEl.textContent = String(currCount);
     if (lastValEl) lastValEl.textContent = String(lastCount);
+    if (yestValEl) yestValEl.textContent = yestCount > 0 ? String(yestCount) : '0';
+    if (yestRevEl) yestRevEl.textContent = yestRev > 0 ? '₪' + Math.round(yestRev).toLocaleString('he-IL') : '—';
 
     if (progressEl) {
       if (lastCount > 0) {
@@ -1530,8 +1626,9 @@ function drawMakorChart(rows) {
 }
 
 async function renderMakorMonthlyChart(clientId) {
+  // date=like.*-01 מסנן רק רשומות חודשיות (ראש חודש), לא יומיות
   const rows = await supaFetch('new_customers',
-    `?client_id=eq.${clientId}&order=date.desc&limit=6&select=date,count,revenue,total_orders,total_revenue,existing_orders,existing_revenue`);
+    `?client_id=eq.${clientId}&date=like.*-01&order=date.desc&limit=6&select=date,count,revenue,total_orders,total_revenue,existing_orders,existing_revenue`);
   if (!rows?.length) return;
   rows.reverse();
   makorChartRows     = rows;
@@ -1689,7 +1786,14 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
     </div>
 
     <div class="chart-card" style="margin-bottom:20px">
-      <div style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px">📈 לקוחות חדשים וערך הזמנות ליום</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--muted2)" id="asif-chart-period-label">📈 לקוחות חדשים וערך הזמנות ליום</div>
+        <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px">
+          <button id="asif-period-daily" onclick="setAsifPeriod('daily')" style="padding:4px 12px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#10b981;color:#fff;transition:all 0.2s">יומי</button>
+          <button id="asif-period-monthly" onclick="setAsifPeriod('monthly')" style="padding:4px 12px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s">חודשי</button>
+          <button id="asif-period-yearly" onclick="setAsifPeriod('yearly')" style="padding:4px 12px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s">שנתי</button>
+        </div>
+      </div>
       <div style="height:260px"><canvas id="asif-chart-daily"></canvas></div>
     </div>
     <div class="chart-card" style="max-width:560px;margin:0 auto 20px">
@@ -1698,38 +1802,122 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
     </div>
   `;
 
-  const chartDefaults = {
-    responsive: true, maintainAspectRatio: false,
-    layout: { padding: { top: 8 } },
-    plugins: { legend: { display: false } },
-    scales: {
-      x: { ticks: { color:'#64748b', font:{family:'Heebo',size:10} }, grid: { color:'rgba(255,255,255,0.04)' } },
-      y: { beginAtZero:true, ticks: { color:'#64748b', font:{family:'Heebo',size:10} }, grid: { color:'rgba(255,255,255,0.06)' } }
-    }
-  };
+  // ── Fetch all-time rows for the period chart ─────────────
+  asifAllRows = await supaFetch('asif_customers',
+    `?select=date,count,total_value&order=date.asc`);
+  asifChartSym = sym;
+  asifChartPeriod = 'daily';
 
-  // ── Chart 1: לקוחות חדשים + ערך הזמנות (משולב) ──────────
-  asifChart1 = new Chart(document.getElementById('asif-chart-daily').getContext('2d'), {
+  drawAsifTimeSeries();
+
+  // ── Chart 3: חלוקה לפי עיר (Doughnut) ───────────────────
+  asifChart3 = new Chart(document.getElementById('asif-chart-city').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: topCities,
+      datasets: [{
+        data: cityData,
+        backgroundColor: PIE_COLORS.slice(0, topCities.length),
+        borderColor: '#1e293b', borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { color:'#94a3b8', font:{family:'Heebo',size:11}, padding:10, boxWidth:12 }
+        },
+        tooltip: {
+          callbacks: {
+            label: i => {
+              const total = cityData.reduce((a,b)=>a+b, 0);
+              const pct   = ((i.parsed/total)*100).toFixed(1);
+              return `${i.label}: ${i.parsed} לקוחות (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function setAsifPeriod(period) {
+  asifChartPeriod = period;
+  ['daily','monthly','yearly'].forEach(p => {
+    const btn = document.getElementById(`asif-period-${p}`);
+    if (!btn) return;
+    if (p === period) {
+      btn.style.background = '#10b981'; btn.style.color = '#fff';
+    } else {
+      btn.style.background = 'transparent'; btn.style.color = 'var(--muted2)';
+    }
+  });
+  const labels = { daily:'ליום', monthly:'לחודש', yearly:'לשנה' };
+  const lbl = document.getElementById('asif-chart-period-label');
+  if (lbl) lbl.textContent = `📈 לקוחות חדשים וערך הזמנות ${labels[period]}`;
+  drawAsifTimeSeries();
+}
+
+function drawAsifTimeSeries() {
+  if (asifChart1) { asifChart1.destroy(); asifChart1 = null; }
+  const canvas = document.getElementById('asif-chart-daily');
+  if (!canvas || !asifAllRows || !asifAllRows.length) return;
+
+  const sym = asifChartSym;
+  const period = asifChartPeriod;
+
+  // ── Aggregate rows by period ──────────────────────────────
+  const bucketMap = {};
+  for (const r of asifAllRows) {
+    const d = r.date; // YYYY-MM-DD
+    let key;
+    if (period === 'daily')   key = d;
+    else if (period === 'monthly') key = d.substring(0, 7); // YYYY-MM
+    else                      key = d.substring(0, 4);      // YYYY
+    if (!bucketMap[key]) bucketMap[key] = { count: 0, value: 0 };
+    bucketMap[key].count += parseInt(r.count || 0);
+    bucketMap[key].value += parseFloat(r.total_value || 0);
+  }
+
+  const keys = Object.keys(bucketMap).sort();
+
+  // ── Format X-axis labels ──────────────────────────────────
+  const xLabels = keys.map(k => {
+    if (period === 'daily') {
+      const [,m,dy] = k.split('-'); return `${dy}/${m}`;
+    } else if (period === 'monthly') {
+      const [y,m] = k.split('-');
+      const monthNames = ['','ינו','פבר','מרץ','אפר','מאי','יוני','יולי','אוג','ספט','אוק','נוב','דצמ'];
+      return `${monthNames[parseInt(m)]} ${y.slice(2)}`;
+    }
+    return k; // year
+  });
+
+  const counts = keys.map(k => bucketMap[k].count);
+  const values = keys.map(k => Math.round(bucketMap[k].value));
+
+  asifChart1 = new Chart(canvas.getContext('2d'), {
     type: 'line',
     data: {
       labels: xLabels,
       datasets: [
         {
           label: 'לקוחות חדשים',
-          data: dates.map(d => dayMap[d].count),
+          data: counts,
           borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.10)',
           borderWidth: 2.5, tension: 0.4, fill: true,
           pointBackgroundColor: '#10b981', pointBorderColor: '#1e293b', pointBorderWidth: 1.5,
-          pointRadius: 4, pointHoverRadius: 7,
+          pointRadius: period === 'yearly' ? 6 : 4, pointHoverRadius: 7,
           yAxisID: 'yCount', order: 2
         },
         {
           label: 'ערך הזמנות (₪)',
-          data: dates.map(d => Math.round(dayMap[d].value)),
+          data: values,
           borderColor: '#3b82f6', backgroundColor: 'transparent',
           borderWidth: 2.5, tension: 0.4, fill: false,
           pointBackgroundColor: '#3b82f6', pointBorderColor: '#1e293b', pointBorderWidth: 1.5,
-          pointRadius: 4, pointHoverRadius: 7,
+          pointRadius: period === 'yearly' ? 6 : 4, pointHoverRadius: 7,
           yAxisID: 'yValue', order: 1
         }
       ]
@@ -1765,37 +1953,6 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
           ticks: { color:'#3b82f6', font:{family:'Heebo',size:10}, maxTicksLimit:6,
             callback: v => sym + (v>=1000 ? Math.round(v/1000)+'K' : v) },
           grid: { display:false }, border:{display:false}
-        }
-      }
-    }
-  });
-
-  // ── Chart 3: חלוקה לפי עיר (Doughnut) ───────────────────
-  asifChart3 = new Chart(document.getElementById('asif-chart-city').getContext('2d'), {
-    type: 'doughnut',
-    data: {
-      labels: topCities,
-      datasets: [{
-        data: cityData,
-        backgroundColor: PIE_COLORS.slice(0, topCities.length),
-        borderColor: '#1e293b', borderWidth: 2
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: { color:'#94a3b8', font:{family:'Heebo',size:11}, padding:10, boxWidth:12 }
-        },
-        tooltip: {
-          callbacks: {
-            label: i => {
-              const total = cityData.reduce((a,b)=>a+b, 0);
-              const pct   = ((i.parsed/total)*100).toFixed(1);
-              return `${i.label}: ${i.parsed} לקוחות (${pct}%)`;
-            }
-          }
         }
       }
     }
