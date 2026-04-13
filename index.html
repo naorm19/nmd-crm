@@ -290,6 +290,8 @@ let asifChart1 = null, asifChart2 = null, asifChart3 = null;
 let asifAllRows = [];
 let asifChartPeriod = 'daily';
 let asifChartSym = '₪';
+let asifChartFrom = '';
+let asifChartTo   = '';
 let perfChartPeriod = 'daily';
 let perfChartClient = null;
 let perfChartFrom   = null;
@@ -1803,11 +1805,22 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
     </div>
   `;
 
-  // ── Fetch all-time rows for the period chart ─────────────
+  // ── Fetch all-time rows for monthly/yearly views ─────────
   asifAllRows = await supaFetch('asif_customers',
     `?select=date,count,total_value&order=date.asc`);
-  asifChartSym = sym;
+  asifChartSym  = sym;
+  asifChartFrom = from;
+  asifChartTo   = to;
   asifChartPeriod = 'daily';
+  // Reset toggle buttons
+  ['daily','monthly','yearly'].forEach(p => {
+    const btn = document.getElementById(`asif-period-${p}`);
+    if (!btn) return;
+    btn.style.background = p === 'daily' ? '#10b981' : 'transparent';
+    btn.style.color      = p === 'daily' ? '#fff'    : 'var(--muted2)';
+  });
+  const lbl = document.getElementById('asif-chart-period-label');
+  if (lbl) lbl.textContent = '📈 לקוחות חדשים וערך הזמנות ליום';
 
   drawAsifTimeSeries();
 
@@ -1868,9 +1881,12 @@ function drawAsifTimeSeries() {
   const sym = asifChartSym;
   const period = asifChartPeriod;
 
+  // ── הפילטר העליון תמיד מנחה — סינון לפי טווח תאריכים בכל מצב ──
+  const sourceRows = asifAllRows.filter(r => r.date >= asifChartFrom && r.date <= asifChartTo);
+
   // ── Aggregate rows by period ──────────────────────────────
   const bucketMap = {};
-  for (const r of asifAllRows) {
+  for (const r of sourceRows) {
     const d = r.date; // YYYY-MM-DD
     let key;
     if (period === 'daily')   key = d;
