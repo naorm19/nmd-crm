@@ -1626,9 +1626,10 @@ function drawMakorChart(rows) {
 }
 
 async function renderMakorMonthlyChart(clientId) {
-  // date=like.*-01 מסנן רק רשומות חודשיות (ראש חודש), לא יומיות
-  const rows = await supaFetch('new_customers',
-    `?client_id=eq.${clientId}&date=like.*-01&order=date.desc&limit=6&select=date,count,revenue,total_orders,total_revenue,existing_orders,existing_revenue`);
+  // שולפים יותר שורות ומסננים בצד לקוח — רק ראשי חודש (YYYY-MM-01)
+  const allRows = await supaFetch('new_customers',
+    `?client_id=eq.${clientId}&order=date.desc&limit=30&select=date,count,revenue,total_orders,total_revenue,existing_orders,existing_revenue`);
+  const rows = (allRows || []).filter(r => r.date && r.date.endsWith('-01')).slice(0, 6);
   if (!rows?.length) return;
   rows.reverse();
   makorChartRows     = rows;
