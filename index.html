@@ -130,6 +130,38 @@
   .budget-status-badge.warn { background:rgba(245,158,11,0.15); color:var(--yellow); }
   .budget-status-badge.over { background:rgba(239,68,68,0.15); color:var(--red); }
   .budget-status-badge.under { background:rgba(100,116,139,0.15); color:var(--muted2); }
+
+  /* ── Budget Alert Overlay ── */
+  #budget-alert-overlay {
+    display:none; position:fixed; inset:0; z-index:9999;
+    background:rgba(0,0,0,0.75); backdrop-filter:blur(4px);
+    align-items:center; justify-content:center;
+  }
+  #budget-alert-overlay.show { display:flex; }
+  #budget-alert-box {
+    background:#1a0a0a; border:2px solid #ef4444;
+    border-radius:16px; padding:32px 36px; max-width:420px; width:90%;
+    text-align:center; box-shadow:0 0 40px rgba(239,68,68,0.4);
+    animation:alertPulse 0.5s ease;
+  }
+  @keyframes alertPulse {
+    0%   { transform:scale(0.85); opacity:0; }
+    60%  { transform:scale(1.04); }
+    100% { transform:scale(1);    opacity:1; }
+  }
+  #budget-alert-icon { font-size:48px; margin-bottom:12px; }
+  #budget-alert-title { font-size:20px; font-weight:800; color:#ef4444; margin-bottom:8px; font-family:'Heebo',sans-serif; }
+  #budget-alert-client { font-size:14px; color:#94a3b8; margin-bottom:16px; font-family:'Heebo',sans-serif; }
+  #budget-alert-lines { margin-bottom:24px; }
+  #budget-alert-lines div { font-size:14px; font-weight:600; color:#f1f5f9; font-family:'Heebo',sans-serif; padding:6px 0; border-bottom:1px solid rgba(239,68,68,0.15); }
+  #budget-alert-lines div:last-child { border:none; }
+  #budget-alert-btn {
+    background:#ef4444; color:#fff; border:none; border-radius:10px;
+    padding:12px 32px; font-size:15px; font-weight:700; cursor:pointer;
+    font-family:'Heebo',sans-serif; width:100%;
+    transition:background 0.2s;
+  }
+  #budget-alert-btn:hover { background:#dc2626; }
   .budget-bar-thick { height:10px; background:var(--surface3); border-radius:5px; overflow:visible; position:relative; margin-top:8px; }
   .budget-bar-thick-fill { height:100%; border-radius:5px; transition:width 0.5s ease; }
   .budget-bar-thick-pace { position:absolute; top:-4px; width:3px; height:18px; background:white; border-radius:2px; opacity:0.6; }
@@ -171,6 +203,17 @@
 </style>
 </head>
 <body>
+
+<!-- Budget Alert Overlay -->
+<div id="budget-alert-overlay">
+  <div id="budget-alert-box">
+    <div id="budget-alert-icon">🚨</div>
+    <div id="budget-alert-title">חריגת תקציב!</div>
+    <div id="budget-alert-client"></div>
+    <div id="budget-alert-lines"></div>
+    <button id="budget-alert-btn" onclick="closeBudgetAlert()">הבנתי ✓</button>
+  </div>
+</div>
 
 <div id="login-screen">
   <div class="login-box">
@@ -545,6 +588,16 @@ async function showClient(clientId, dateMode) {
 
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(`tab-${clientId}`)?.classList.add('active');
+
+  // ── התראת חריגת תקציב ────────────────────────────────────
+  const overMeta   = budgetMeta   > 0 && (mtdMeta/budgetMeta   - pace) > 0.1;
+  const overGoogle = budgetGoogle > 0 && (mtdGoogle/budgetGoogle - pace) > 0.1;
+  if (overMeta || overGoogle) {
+    const lines = [];
+    if (overMeta)   lines.push(`📘 Meta: הוצא ${sym}${Math.round(mtdMeta).toLocaleString('he-IL')} מתוך ${sym}${Math.round(budgetMeta).toLocaleString('he-IL')} (${(mtdMeta/budgetMeta*100).toFixed(0)}%)`);
+    if (overGoogle) lines.push(`🔴 Google: הוצא ${sym}${Math.round(mtdGoogle).toLocaleString('he-IL')} מתוך ${sym}${Math.round(budgetGoogle).toLocaleString('he-IL')} (${(mtdGoogle/budgetGoogle*100).toFixed(0)}%)`);
+    showBudgetAlert(c.business_name, lines);
+  }
 
   const cpl = ins.leads>0 ? sym+Math.round(ins.spend/ins.leads).toLocaleString('he-IL') : '-';
 
@@ -1974,6 +2027,17 @@ function drawAsifTimeSeries() {
       }
     }
   });
+}
+
+function showBudgetAlert(clientName, lines) {
+  document.getElementById('budget-alert-client').textContent = clientName;
+  const linesEl = document.getElementById('budget-alert-lines');
+  linesEl.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+  document.getElementById('budget-alert-overlay').classList.add('show');
+}
+
+function closeBudgetAlert() {
+  document.getElementById('budget-alert-overlay').classList.remove('show');
 }
 
 function toggleChart() {
