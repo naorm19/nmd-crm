@@ -543,7 +543,63 @@ function renderOverview() {
   const main = document.getElementById('main');
   if (!clients.length) { main.innerHTML = '<div class="empty">אין לקוחות במערכת</div>'; return; }
   const { from, to } = getDateRange('today');
-  main.innerHTML = '<div class="overview-grid">' + clients.map(c => {
+
+  // ── סיכום תקציב כולל ─────────────────────────────────────
+  let totalBudget = 0, totalSpent = 0, totalSpendToday = 0, totalLeadsToday = 0;
+  clients.forEach(c => {
+    totalBudget     += (c.monthly_budget_meta||0) + (c.monthly_budget_google||0);
+    totalSpent      += getMonthSpend(c.id);
+    const ins        = getInsightsForRange(c.id, from, to);
+    totalSpendToday += ins.spend;
+    totalLeadsToday += ins.leads;
+  });
+  const pace      = getMonthPace();
+  const pct       = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
+  const pacePct   = pace * 100;
+  const overAll   = totalBudget > 0 && (totalSpent/totalBudget - pace) > 0.1;
+  const barColor  = overAll ? '#ef4444' : pct >= pacePct - 5 ? '#10b981' : '#f59e0b';
+  const barWidth  = Math.min(100, pct).toFixed(1);
+  const paceRight = (100 - Math.min(100, pacePct)).toFixed(1);
+
+  const summaryHtml = totalBudget > 0 ? `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px 24px;margin-bottom:20px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">💰 ניהול תקציב — סך הכל לקוחות</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:14px;">
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">תקציב חודשי</div>
+            <div style="font-size:22px;font-weight:800;color:var(--text)">₪${Math.round(totalBudget).toLocaleString('he-IL')}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">הוצא החודש</div>
+            <div style="font-size:22px;font-weight:800;color:${barColor}">₪${Math.round(totalSpent).toLocaleString('he-IL')}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">נותר</div>
+            <div style="font-size:22px;font-weight:800;color:var(--muted2)">₪${Math.round(Math.max(0,totalBudget-totalSpent)).toLocaleString('he-IL')}</div>
+          </div>
+          <div style="border-right:1px solid var(--border);padding-right:24px;">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">הוצאה היום</div>
+            <div style="font-size:22px;font-weight:800;color:#3b82f6">₪${Math.round(totalSpendToday).toLocaleString('he-IL')}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">לידים היום</div>
+            <div style="font-size:22px;font-weight:800;color:#10b981">${totalLeadsToday}</div>
+          </div>
+        </div>
+        <div style="position:relative;height:8px;background:var(--surface3);border-radius:4px;overflow:visible;">
+          <div style="height:100%;width:${barWidth}%;background:${barColor};border-radius:4px;transition:width 0.5s;"></div>
+          <div style="position:absolute;top:-4px;width:3px;height:16px;background:rgba(255,255,255,0.5);border-radius:2px;right:${paceRight}%;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted);">
+          <span>ניצול: <strong style="color:${barColor}">${pct.toFixed(0)}%</strong></span>
+          <span>קצב צפוי: <strong style="color:var(--muted2)">${pacePct.toFixed(0)}%</strong></span>
+          ${overAll ? '<span style="color:#ef4444;font-weight:700">⚠️ חריגה</span>' : ''}
+        </div>
+      </div>
+    </div>` : '';
+
+  main.innerHTML = summaryHtml + '<div class="overview-grid">' + clients.map(c => {
     const ins      = getInsightsForRange(c.id, from, to);
     const budget   = (c.monthly_budget_meta||0) + (c.monthly_budget_google||0);
     const mtdSpend = getMonthSpend(c.id);
