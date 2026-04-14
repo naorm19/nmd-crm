@@ -895,7 +895,7 @@ async function showClient(clientId, dateMode) {
     renderChart(c, from, to, sym);
   }
   if (c.business_name === 'אסיף') renderAsifNewCustomers(c.id, from, to, label, sym);
-  if (c.business_name === 'מקור השפע') await loadNewCustomersInline(c.id);
+  if (c.business_name === 'מקור השפע') await loadNewCustomersInline(c.id, from, to);
   if (c.business_name === 'דני ספרים') renderDaniSales(c.id, from, to, sym);
 }
 
@@ -1506,16 +1506,23 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
   }
 }
 
-async function loadNewCustomersInline(clientId) {
+let _makorFrom = '';
+let _makorTo   = '';
+
+async function loadNewCustomersInline(clientId, from, to) {
+  // שמור from/to לשימוש ב-renderMakorMonthlyChart
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  _makorFrom = from || `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+  _makorTo   = to   || todayStr;
+
   const valEl      = document.getElementById('new-customers-val');
   const lastValEl  = document.getElementById('last-month-customers-val');
   const progressEl = document.getElementById('customers-progress');
   const yestValEl  = document.getElementById('new-customers-yesterday-val');
   const yestRevEl  = document.getElementById('new-customers-yesterday-rev');
   if (!valEl) return;
-
-  const now = new Date();
-  const pad = n => String(n).padStart(2,'0');
   const currDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
   const lm = new Date(now.getFullYear(), now.getMonth()-1, 1);
   const lastDate = `${lm.getFullYear()}-${pad(lm.getMonth()+1)}-01`;
@@ -1551,7 +1558,7 @@ async function loadNewCustomersInline(clientId) {
     console.warn('new_customers fetch failed:', e?.message || e);
     valEl.textContent = '-';
   }
-  await renderMakorMonthlyChart(clientId);
+  await renderMakorMonthlyChart(clientId, _makorFrom, _makorTo);
 }
 
 let makorNcChart = null;
@@ -1765,19 +1772,39 @@ function drawMakorChart(rows, periodOverride) {
   });
 }
 
-async function renderMakorMonthlyChart(clientId) {
+async function renderMakorMonthlyChart(clientId, from, to) {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const rangeFrom = from || `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+  const rangeTo   = to   || todayStr;
+
   // שולפים כל הנתונים — מסננים בצד לקוח
   const allRows = await supaFetch('new_customers',
-    `?client_id=eq.${clientId}&order=date.desc&limit=60&select=date,count,revenue,total_orders,total_revenue,existing_orders,existing_revenue`);
+    `?client_id=eq.${clientId}&order=date.desc&limit=120&select=date,count,revenue,total_orders,total_revenue,existing_orders,existing_revenue`);
   if (!allRows?.length) return;
 
-  // חודשי — רק ראשי חודש, 6 חודשים אחרונים
+  // ── חודשי: רק ראשי חודש, 6 חודשים אחרונים ────────────────
   const monthlyRows = allRows.filter(r => r.date && r.date.endsWith('-01')).slice(0, 6);
   monthlyRows.reverse();
 
-  // יומי — רק רשומות שאינן ראש חודש (תאריכים יומיים), 30 ימים אחרונים
-  const dailyRows = allRows.filter(r => r.date && !r.date.endsWith('-01')).slice(0, 30);
-  dailyRows.reverse();
+  // ── יומי: כל הרשומות הלא-חודשיות בטווח ──────────────────
+  const dailyMap = {};
+  allRows
+    .filter(r => r.date && !r.date.endsWith('-01') && r.date >= rangeFrom && r.date <= rangeTo)
+    .forEach(r => { dailyMap[r.date] = r; });
+
+  // מלא ימים חסרים ב-0 בכל הטווח
+  const cur = new Date(rangeFrom);
+  const end = new Date(rangeTo);
+  while (cur <= end) {
+    const key = `${cur.getFullYear()}-${pad(cur.getMonth()+1)}-${pad(cur.getDate())}`;
+    if (!dailyMap[key]) {
+      dailyMap[key] = { date: key, count: 0, revenue: 0, total_orders: 0, total_revenue: 0, existing_orders: 0, existing_revenue: 0 };
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  const dailyRows = Object.values(dailyMap).sort((a,b) => a.date.localeCompare(b.date));
 
   makorChartRows      = monthlyRows;
   makorChartDailyRows = dailyRows;
@@ -1816,7 +1843,7 @@ async function saveNewCustomersInline(clientId) {
     });
     if (!res.ok) throw new Error(`Supabase upsert failed: ${res.status}`);
     showToast('✅ לקוחות חדשים נשמרו!');
-    await loadNewCustomersInline(clientId);
+    await loadNewCustomersInline(clientId, _makorFrom, _makorTo);
   } catch(e) {
     console.error('saveNewCustomersInline error:', e);
     showToast('❌ לא הצליח לשמור', 'red');
@@ -1845,7 +1872,7 @@ async function saveLastMonthCustomers(clientId) {
     });
     if (!res.ok) throw new Error(`Supabase upsert failed: ${res.status}`);
     showToast('✅ חודש שעבר נשמר!');
-    await loadNewCustomersInline(clientId);
+    await loadNewCustomersInline(clientId, _makorFrom, _makorTo);
   } catch(e) {
     console.error('saveLastMonthCustomers error:', e);
     showToast('❌ לא הצליח לשמור', 'red');
