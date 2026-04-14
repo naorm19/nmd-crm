@@ -2043,14 +2043,25 @@ function drawAsifTimeSeries() {
   // ── Aggregate rows by period ──────────────────────────────
   const bucketMap = {};
   for (const r of sourceRows) {
-    const d = r.date; // YYYY-MM-DD
+    const d = r.date;
     let key;
-    if (period === 'daily')   key = d;
-    else if (period === 'monthly') key = d.substring(0, 7); // YYYY-MM
-    else                      key = d.substring(0, 4);      // YYYY
+    if (period === 'daily')        key = d;
+    else if (period === 'monthly') key = d.substring(0, 7);
+    else                           key = d.substring(0, 4);
     if (!bucketMap[key]) bucketMap[key] = { count: 0, value: 0 };
     bucketMap[key].count += parseInt(r.count || 0);
     bucketMap[key].value += parseFloat(r.total_value || 0);
+  }
+
+  // ── במצב יומי — ממלא ימים חסרים בטווח עם 0 ────────────────
+  if (period === 'daily' && asifChartFrom && asifChartTo) {
+    const cur = new Date(asifChartFrom);
+    const end = new Date(asifChartTo);
+    while (cur <= end) {
+      const key = cur.toISOString().split('T')[0];
+      if (!bucketMap[key]) bucketMap[key] = { count: 0, value: 0 };
+      cur.setDate(cur.getDate() + 1);
+    }
   }
 
   const keys = Object.keys(bucketMap).sort();
