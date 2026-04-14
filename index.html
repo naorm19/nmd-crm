@@ -546,12 +546,26 @@ function renderOverview() {
 
   // ── סיכום תקציב כולל ─────────────────────────────────────
   let totalBudget = 0, totalSpent = 0, totalSpendToday = 0, totalLeadsToday = 0;
+  const overClients  = [];
+  const underClients = [];
   clients.forEach(c => {
-    totalBudget     += (c.monthly_budget_meta||0) + (c.monthly_budget_google||0);
-    totalSpent      += getMonthSpend(c.id);
+    const budget   = (c.monthly_budget_meta||0) + (c.monthly_budget_google||0);
+    const mtdSpend = getMonthSpend(c.id);
+    totalBudget     += budget;
+    totalSpent      += mtdSpend;
     const ins        = getInsightsForRange(c.id, from, to);
     totalSpendToday += ins.spend;
     totalLeadsToday += ins.leads;
+    if (budget > 0) {
+      const status = getBudgetStatus(mtdSpend, budget);
+      const sym = cur(c);
+      const pctUsed = (mtdSpend / budget * 100).toFixed(0);
+      if (status?.cls === 'over') {
+        overClients.push({ name: c.business_name, pct: pctUsed, spent: mtdSpend, budget, id: c.id, sym });
+      } else if (status?.cls === 'under') {
+        underClients.push({ name: c.business_name, pct: pctUsed, spent: mtdSpend, budget, id: c.id, sym });
+      }
+    }
   });
   const pace      = getMonthPace();
   const pct       = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
@@ -560,6 +574,35 @@ function renderOverview() {
   const barColor  = overAll ? '#ef4444' : pct >= pacePct - 5 ? '#10b981' : '#f59e0b';
   const barWidth  = Math.min(100, pct).toFixed(1);
   const paceRight = (100 - Math.min(100, pacePct)).toFixed(1);
+
+  // ── באנר התראות תקציב ────────────────────────────────────
+  let alertBanners = '';
+  if (overClients.length) {
+    const items = overClients.map(x =>
+      `<span onclick="showClient(${x.id})" style="cursor:pointer;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:5px 12px;font-weight:700;white-space:nowrap;transition:background 0.15s;" onmouseover="this.style.background='rgba(239,68,68,0.28)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'">${x.name} <span style="opacity:0.75">${x.pct}%</span></span>`
+    ).join('');
+    alertBanners += `
+    <div style="background:rgba(239,68,68,0.08);border:1.5px solid rgba(239,68,68,0.4);border-radius:14px;padding:14px 20px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <span style="font-size:22px;flex-shrink:0;">🚨</span>
+      <div style="flex:1;min-width:200px;">
+        <div style="font-size:13px;font-weight:800;color:#ef4444;margin-bottom:6px;">חריגה מתקציב — יש לחזק את ההגבלות</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">${items}</div>
+      </div>
+    </div>`;
+  }
+  if (underClients.length) {
+    const items = underClients.map(x =>
+      `<span onclick="showClient(${x.id})" style="cursor:pointer;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:5px 12px;font-weight:700;white-space:nowrap;transition:background 0.15s;" onmouseover="this.style.background='rgba(245,158,11,0.28)'" onmouseout="this.style.background='rgba(245,158,11,0.15)'">${x.name} <span style="opacity:0.75">${x.pct}%</span></span>`
+    ).join('');
+    alertBanners += `
+    <div style="background:rgba(245,158,11,0.07);border:1.5px solid rgba(245,158,11,0.35);border-radius:14px;padding:14px 20px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <span style="font-size:22px;flex-shrink:0;">⚠️</span>
+      <div style="flex:1;min-width:200px;">
+        <div style="font-size:13px;font-weight:800;color:#f59e0b;margin-bottom:6px;">ניצול תקציב נמוך — בדוק הגדרות קמפיין</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">${items}</div>
+      </div>
+    </div>`;
+  }
 
   const summaryHtml = totalBudget > 0 ? `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px 24px;margin-bottom:20px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;">
@@ -599,7 +642,7 @@ function renderOverview() {
       </div>
     </div>` : '';
 
-  main.innerHTML = summaryHtml + '<div class="overview-grid">' + clients.map(c => {
+  main.innerHTML = alertBanners + summaryHtml + '<div class="overview-grid">' + clients.map(c => {
     const ins      = getInsightsForRange(c.id, from, to);
     const budget   = (c.monthly_budget_meta||0) + (c.monthly_budget_google||0);
     const mtdSpend = getMonthSpend(c.id);
