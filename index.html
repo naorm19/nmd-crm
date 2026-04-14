@@ -774,11 +774,18 @@ async function showClient(clientId, dateMode) {
           <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">ניתוח לקוחות</div>
           <div style="font-size:16px;font-weight:700;color:var(--text)" id="makor-chart-title">לקוחות חדשים</div>
         </div>
-        <!-- Segmented control -->
-        <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px;">
-          <button id="makor-filter-new"      onclick="setMakorFilter('new')"      style="padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;font-family:'Heebo';cursor:pointer;border:none;background:#10b981;color:#fff;transition:all 0.2s;">חדשים</button>
-          <button id="makor-filter-existing" onclick="setMakorFilter('existing')" style="padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;font-family:'Heebo';cursor:pointer;border:none;background:transparent;color:var(--muted2);transition:all 0.2s;">קיימים</button>
-          <button id="makor-filter-all"      onclick="setMakorFilter('all')"      style="padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;font-family:'Heebo';cursor:pointer;border:none;background:transparent;color:var(--muted2);transition:all 0.2s;">הכל</button>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+          <!-- Customer type filter -->
+          <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px;">
+            <button id="makor-filter-new"      onclick="setMakorFilter('new')"      style="padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;font-family:'Heebo';cursor:pointer;border:none;background:#10b981;color:#fff;transition:all 0.2s;">חדשים</button>
+            <button id="makor-filter-existing" onclick="setMakorFilter('existing')" style="padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;font-family:'Heebo';cursor:pointer;border:none;background:transparent;color:var(--muted2);transition:all 0.2s;">קיימים</button>
+            <button id="makor-filter-all"      onclick="setMakorFilter('all')"      style="padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;font-family:'Heebo';cursor:pointer;border:none;background:transparent;color:var(--muted2);transition:all 0.2s;">הכל</button>
+          </div>
+          <!-- Period toggle -->
+          <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;">
+            <button id="makor-period-daily"   onclick="setMakorPeriod('daily')"   style="padding:4px 12px;font-size:11px;font-family:'Heebo';border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s;">יומי</button>
+            <button id="makor-period-monthly" onclick="setMakorPeriod('monthly')" style="padding:4px 12px;font-size:11px;font-family:'Heebo';border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#10b981;color:#fff;transition:all 0.2s;">חודשי</button>
+          </div>
         </div>
       </div>
 
@@ -1494,8 +1501,10 @@ async function loadNewCustomersInline(clientId) {
 let makorNcChart = null;
 
 let makorChartFilter = 'new'; // 'new' | 'existing' | 'all'
-let makorChartRows   = null;
-let makorChartClientId = null;
+let makorChartRows       = null;  // monthly rows (YYYY-MM-01)
+let makorChartDailyRows  = null;  // daily rows
+let makorChartClientId   = null;
+let makorChartPeriod     = 'monthly'; // 'daily' | 'monthly'
 
 function setMakorFilter(filter) {
   makorChartFilter = filter;
@@ -1503,14 +1512,32 @@ function setMakorFilter(filter) {
   ['new','existing','all'].forEach(k => {
     const btn = document.getElementById('makor-filter-' + k);
     if (!btn) return;
-    const active = filter === k;
-    btn.style.background = active ? colors[k] : 'transparent';
-    btn.style.color      = active ? '#fff' : 'var(--muted2)';
+    btn.style.background = filter === k ? colors[k] : 'transparent';
+    btn.style.color      = filter === k ? '#fff' : 'var(--muted2)';
   });
   const titles = { new:'לקוחות חדשים', existing:'לקוחות קיימים', all:'כלל הלקוחות' };
   const titleEl = document.getElementById('makor-chart-title');
   if (titleEl) titleEl.textContent = titles[filter];
-  if (makorChartRows) drawMakorChart(makorChartRows);
+  _drawMakorByPeriod();
+}
+
+function setMakorPeriod(period) {
+  makorChartPeriod = period;
+  ['daily','monthly'].forEach(p => {
+    const btn = document.getElementById(`makor-period-${p}`);
+    if (!btn) return;
+    btn.style.background = p === period ? '#10b981' : 'transparent';
+    btn.style.color      = p === period ? '#fff'    : 'var(--muted2)';
+  });
+  _drawMakorByPeriod();
+}
+
+function _drawMakorByPeriod() {
+  if (makorChartPeriod === 'daily' && makorChartDailyRows?.length) {
+    drawMakorChart(makorChartDailyRows, 'daily');
+  } else if (makorChartRows?.length) {
+    drawMakorChart(makorChartRows, 'monthly');
+  }
 }
 
 function updateMakorKpis(rows) {
@@ -1553,13 +1580,15 @@ function updateMakorKpis(rows) {
   if (ev3) ev3.textContent = '₪' + avg.toLocaleString();
 }
 
-function drawMakorChart(rows) {
+function drawMakorChart(rows, periodOverride) {
   updateMakorKpis(rows);
+  const period = periodOverride || makorChartPeriod;
 
   const HEB_MONTHS = ['ינו','פבר','מרץ','אפר','מאי','יונ','יול','אוג','ספט','אוק','נוב','דצמ'];
   const labels = rows.map(r => {
-    const d = new Date(r.date);
-    return HEB_MONTHS[d.getMonth()] + " '" + String(d.getFullYear()).slice(2);
+    const [y,m,d] = r.date.split('-');
+    if (period === 'daily') return `${d}/${m}`;
+    return HEB_MONTHS[parseInt(m)-1] + " '" + y.slice(2);
   });
 
   const isLast = i => i === rows.length - 1;
@@ -1681,15 +1710,33 @@ function drawMakorChart(rows) {
 }
 
 async function renderMakorMonthlyChart(clientId) {
-  // שולפים יותר שורות ומסננים בצד לקוח — רק ראשי חודש (YYYY-MM-01)
+  // שולפים כל הנתונים — מסננים בצד לקוח
   const allRows = await supaFetch('new_customers',
-    `?client_id=eq.${clientId}&order=date.desc&limit=30&select=date,count,revenue,total_orders,total_revenue,existing_orders,existing_revenue`);
-  const rows = (allRows || []).filter(r => r.date && r.date.endsWith('-01')).slice(0, 6);
-  if (!rows?.length) return;
-  rows.reverse();
-  makorChartRows     = rows;
-  makorChartClientId = clientId;
-  drawMakorChart(rows);
+    `?client_id=eq.${clientId}&order=date.desc&limit=60&select=date,count,revenue,total_orders,total_revenue,existing_orders,existing_revenue`);
+  if (!allRows?.length) return;
+
+  // חודשי — רק ראשי חודש, 6 חודשים אחרונים
+  const monthlyRows = allRows.filter(r => r.date && r.date.endsWith('-01')).slice(0, 6);
+  monthlyRows.reverse();
+
+  // יומי — רק רשומות שאינן ראש חודש (תאריכים יומיים), 30 ימים אחרונים
+  const dailyRows = allRows.filter(r => r.date && !r.date.endsWith('-01')).slice(0, 30);
+  dailyRows.reverse();
+
+  makorChartRows      = monthlyRows;
+  makorChartDailyRows = dailyRows;
+  makorChartClientId  = clientId;
+
+  // ברירת מחדל: חודשי
+  makorChartPeriod = 'monthly';
+  ['daily','monthly'].forEach(p => {
+    const btn = document.getElementById(`makor-period-${p}`);
+    if (!btn) return;
+    btn.style.background = p === 'monthly' ? '#10b981' : 'transparent';
+    btn.style.color      = p === 'monthly' ? '#fff'    : 'var(--muted2)';
+  });
+
+  _drawMakorByPeriod();
 }
 
 async function saveNewCustomersInline(clientId) {
