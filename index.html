@@ -2353,15 +2353,16 @@ async function init() {
 if (sessionStorage.getItem(SESSION_KEY) === '1') init();
 
 // ══════════════════════════════════════════════════════════════
-//  CLARITY CHAT WIDGET
+//  CLARITY AI CHAT — powered by Claude
 // ══════════════════════════════════════════════════════════════
-const clarityCache = {};
+const clarityHistory = {};   // { clientId: [{role,content},...] }
+let   clarityLoading = {};   // { clientId: bool }
 
 function toggleClarityChat(clientId) {
   const body    = document.getElementById(`clarity-body-${clientId}`);
   const chevron = document.getElementById(`clarity-chevron-${clientId}`);
   const isOpen  = body.style.display !== 'none';
-  body.style.display     = isOpen ? 'none' : 'block';
+  body.style.display      = isOpen ? 'none' : 'block';
   chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
 }
 
@@ -2373,10 +2374,20 @@ async function loadClarityData(clientId) {
 
   loadBtn.style.display = 'none';
   msgBox.style.display  = 'flex';
+  clarityHistory[clientId] = [];
 
-  clarityAddMsg(clientId, '⏳ טוען נתוני Clarity...', 'bot loading');
+  clarityAddMsg(clientId, '⏳ מתחבר ל-Clarity ומנתח נתונים...', 'bot loading');
+
   try {
-    const res  = await fetch(`http://localhost:3001/clarity-data/${clientId}`);
+    const res  = await fetch('http://localhost:3001/clarity-chat', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        clientId,
+        message: 'נתח את נתוני הגולשים של 3 הימים האחרונים. תן לי סיכום מלא: תנועה לפי ערוץ ומכשיר, איתותי תסכול (rage/dead clicks), עמודים פופולריים, ו-2-3 המלצות מעשיות לשיפור.',
+        history: []
+      })
+    });
     const data = await res.json();
     msgBox.innerHTML = '';
 
@@ -2387,10 +2398,15 @@ async function loadClarityData(clientId) {
       return;
     }
 
-    clarityCache[clientId] = data;
-    clarityAddMsg(clientId, clarityGenerateInsights(data), 'bot');
-    quickBox.style.display    = 'flex';
-    inputRow.style.display    = 'flex';
+    // Save initial analysis to history
+    clarityHistory[clientId] = [
+      { role: 'user',      content: 'נתח את נתוני הגולשים של 3 הימים האחרונים.' },
+      { role: 'assistant', content: data.reply }
+    ];
+
+    clarityAddMsg(clientId, data.reply, 'bot');
+    quickBox.style.display = 'flex';
+    inputRow.style.display = 'flex';
     clarityShowQuickBtns(clientId);
   } catch(e) {
     msgBox.innerHTML = '';
@@ -2403,9 +2419,11 @@ async function loadClarityData(clientId) {
 function clarityAddMsg(clientId, text, cls) {
   const box = document.getElementById(`clarity-messages-${clientId}`);
   if (!box) return;
+  // Remove loading msg if exists
+  const loading = box.querySelector('.loading');
+  if (loading) loading.remove();
   const div = document.createElement('div');
   div.className = `clarity-msg ${cls}`;
-  // Simple markdown: **bold**
   div.innerHTML = text
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n/g, '<br>');
@@ -2417,191 +2435,66 @@ function clarityShowQuickBtns(clientId) {
   const box = document.getElementById(`clarity-quick-${clientId}`);
   if (!box) return;
   const qs = [
-    'מאיפה מגיע הכי הרבה תנועה?',
-    'כמה מגיע ממובייל?',
-    'יש Rage Clicks?',
-    'Dead Clicks?',
-    'אילו עמודים הכי פופולריים?',
-    'מה מומלץ לשפר?',
+    'מאיפה מגיעה הכי הרבה תנועה?',
+    'כמה אחוז מהגולשים ממובייל?',
+    'יש Rage Clicks — מה המשמעות?',
+    'אילו עמודים סובלים מ-Dead Clicks?',
+    'מה הכי דחוף לתקן באתר?',
+    'מה מומלץ לסגור / להפסיק?',
   ];
   box.innerHTML = qs.map(q =>
-    `<button class="clarity-quick-btn" onclick="claritySendText(${clientId},'${q}')">${q}</button>`
+    `<button class="clarity-quick-btn" onclick="claritySendText(${clientId},\`${q}\`)">${q}</button>`
   ).join('');
 }
 
 function sendClarityMsg(clientId) {
   const inp = document.getElementById(`clarity-input-${clientId}`);
   const txt = inp.value.trim();
-  if (!txt) return;
+  if (!txt || clarityLoading[clientId]) return;
   inp.value = '';
   claritySendText(clientId, txt);
 }
 
-function claritySendText(clientId, text) {
+async function claritySendText(clientId, text) {
+  if (clarityLoading[clientId]) return;
+  clarityLoading[clientId] = true;
+
+  const sendBtn = document.querySelector(`#clarity-input-row-${clientId} .clarity-send-btn`);
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '...'; }
+
   clarityAddMsg(clientId, text, 'user');
-  const data = clarityCache[clientId];
-  if (!data) { clarityAddMsg(clientId, 'טען קודם נתונים.', 'bot'); return; }
-  setTimeout(() => clarityAddMsg(clientId, clarityAnswer(text, data), 'bot'), 250);
-}
+  clarityAddMsg(clientId, '⏳ חושב...', 'bot loading');
 
-// ── Insight Generator ────────────────────────────────────────
-function clarityGenerateInsights(data) {
-  const cd = data.byChannelDevice || [];
-  const cu = data.byURL           || [];
-  const traffic  = cd.find(m => m.metricName === 'Traffic');
-  const rage     = cd.find(m => m.metricName === 'RageClickCount');
-  const dead     = cd.find(m => m.metricName === 'DeadClickCount');
-
-  let out = `📊 **סיכום 3 ימים אחרונים — ${data.clientName}**\n\n`;
-
-  // ── תנועה לפי ערוץ ──
-  if (traffic) {
-    const rows  = traffic.information || [];
-    const total = rows.reduce((s, r) => s + parseInt(r.sessionsCount || 0), 0);
-    const byCh  = {};
-    rows.forEach(r => { byCh[r.Channel] = (byCh[r.Channel] || 0) + parseInt(r.sessionsCount || 0); });
-    const names = { OrganicSearch:'🔍 אורגני', PaidSearch:'💰 ממומן (PPC)', Direct:'🔗 ישיר', Social:'📱 סושיאל', Referral:'🔄 הפניות', Display:'🖼️ דיספליי', Email:'📧 מייל', Other:'❓ אחר' };
-    out += `**סה"כ ${total.toLocaleString('he-IL')} סשנים:**\n`;
-    Object.entries(byCh).sort((a,b)=>b[1]-a[1]).forEach(([ch, n]) => {
-      const pct = total > 0 ? Math.round(n / total * 100) : 0;
-      out += `• ${names[ch] || ch}: ${n.toLocaleString('he-IL')} (${pct}%)\n`;
+  try {
+    const history = clarityHistory[clientId] || [];
+    const res  = await fetch('http://localhost:3001/clarity-chat', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ clientId, message: text, history })
     });
+    const data = await res.json();
 
-    // ── מכשירים ──
-    const byDev = {};
-    rows.forEach(r => { byDev[r.Device] = (byDev[r.Device] || 0) + parseInt(r.sessionsCount || 0); });
-    const dnames = { Mobile:'📱 מובייל', PC:'🖥️ דסקטופ', Tablet:'📲 טאבלט', Other:'❓ אחר' };
-    out += `\n**לפי מכשיר:**\n`;
-    Object.entries(byDev).sort((a,b)=>b[1]-a[1]).forEach(([d, n]) => {
-      const pct = total > 0 ? Math.round(n / total * 100) : 0;
-      out += `• ${dnames[d] || d}: ${n.toLocaleString('he-IL')} (${pct}%)\n`;
-    });
-  }
+    if (data.error) {
+      clarityAddMsg(clientId, `❌ ${data.error}`, 'bot');
+    } else {
+      // Update history
+      clarityHistory[clientId] = [
+        ...history,
+        { role: 'user',      content: text },
+        { role: 'assistant', content: data.reply }
+      ];
+      // Keep history max 10 turns to avoid token bloat
+      if (clarityHistory[clientId].length > 20)
+        clarityHistory[clientId] = clarityHistory[clientId].slice(-20);
 
-  // ── איתותי תסכול ──
-  const issues = [];
-  if (rage) {
-    const n = (rage.information || []).reduce((s,r) => s + parseInt(r.subTotal || 0), 0);
-    if (n > 0) issues.push(`⚠️ **${n} Rage Clicks** — גולשים לחצו בתסכול`);
-  }
-  if (dead) {
-    const n = (dead.information || []).reduce((s,r) => s + parseInt(r.subTotal || 0), 0);
-    if (n > 0) issues.push(`⚠️ **${n} Dead Clicks** — לחיצות על אלמנטים לא לחיצים`);
-  }
-  if (issues.length) out += `\n\n🚨 **איתותי UX:**\n${issues.join('\n')}`;
-  else out += `\n\n✅ אין איתותי תסכול משמעותיים`;
-
-  // ── עמודים פופולריים ──
-  const pt = cu.find(m => m.metricName === 'Traffic');
-  if (pt) {
-    const pages = (pt.information || [])
-      .sort((a,b) => parseInt(b.sessionsCount||0) - parseInt(a.sessionsCount||0))
-      .slice(0, 5);
-    if (pages.length) {
-      out += `\n\n**📄 עמודים פופולריים:**\n`;
-      pages.forEach(p => {
-        const url = (p.URL || p.Url || '/').replace(/^https?:\/\/[^/]+/, '') || '/';
-        const short = url.length > 55 ? url.substring(0,52)+'...' : url;
-        out += `• ${short}: ${parseInt(p.sessionsCount||0).toLocaleString('he-IL')} סשנים\n`;
-      });
+      clarityAddMsg(clientId, data.reply, 'bot');
     }
+  } catch(e) {
+    clarityAddMsg(clientId, '❌ שגיאת תקשורת עם השרת.', 'bot');
+  } finally {
+    clarityLoading[clientId] = false;
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'שלח ›'; }
   }
-
-  out += `\n\n_שאל שאלה כדי לצלול לעומק_ 👇`;
-  return out;
-}
-
-// ── Q&A Engine ───────────────────────────────────────────────
-function clarityAnswer(q, data) {
-  const lq = q.toLowerCase();
-  const cd = data.byChannelDevice || [];
-  const cu = data.byURL           || [];
-  const traffic = cd.find(m => m.metricName === 'Traffic');
-
-  // תנועה / ערוץ
-  if (/תנוע|ערוץ|מאיפ|channel|מקור/.test(lq)) {
-    if (!traffic) return 'אין נתוני תנועה זמינים.';
-    const rows  = traffic.information || [];
-    const total = rows.reduce((s,r) => s + parseInt(r.sessionsCount||0), 0);
-    const byCh  = {};
-    rows.forEach(r => { byCh[r.Channel] = (byCh[r.Channel]||0) + parseInt(r.sessionsCount||0); });
-    const names = { OrganicSearch:'אורגני', PaidSearch:'ממומן', Direct:'ישיר', Social:'סושיאל', Referral:'הפניות', Display:'דיספליי', Email:'מייל', Other:'אחר' };
-    let ans = `**מקורות תנועה (3 ימים):**\n`;
-    Object.entries(byCh).sort((a,b)=>b[1]-a[1]).forEach(([ch,n]) => {
-      ans += `• ${names[ch]||ch}: ${n.toLocaleString('he-IL')} (${Math.round(n/total*100)}%)\n`;
-    });
-    return ans;
-  }
-
-  // מובייל / מכשיר
-  if (/מובייל|mobile|מכשיר|device|טאבלט|דסקטופ/.test(lq)) {
-    if (!traffic) return 'אין נתוני מכשירים.';
-    const rows  = traffic.information || [];
-    const total = rows.reduce((s,r) => s + parseInt(r.sessionsCount||0), 0);
-    const byDev = {};
-    rows.forEach(r => { byDev[r.Device] = (byDev[r.Device]||0) + parseInt(r.sessionsCount||0); });
-    const dnames = { Mobile:'📱 מובייל', PC:'🖥️ דסקטופ', Tablet:'📲 טאבלט', Other:'❓ אחר' };
-    let ans = `**פילוח מכשירים:**\n`;
-    Object.entries(byDev).sort((a,b)=>b[1]-a[1]).forEach(([d,n]) => {
-      ans += `• ${dnames[d]||d}: ${n.toLocaleString('he-IL')} (${Math.round(n/total*100)}%)\n`;
-    });
-    return ans;
-  }
-
-  // Rage clicks
-  if (/rage|תסכול|עצבני/.test(lq)) {
-    const rage = cd.find(m => m.metricName === 'RageClickCount');
-    if (!rage) return 'אין נתוני Rage Clicks.';
-    const n   = (rage.information||[]).reduce((s,r) => s+parseInt(r.subTotal||0),0);
-    const pct = (rage.information||[])[0]?.sessionsWithMetricPercentage || 0;
-    if (n === 0) return '✅ אין Rage Clicks — לא נמצאו סימני תסכול.';
-    return `⚠️ **${n} Rage Clicks** ב-3 הימים האחרונים\n${pct.toFixed(1)}% מהסשנים מכילים rage clicks.\n\nמומלץ לצפות בהקלטות סשנים ולזהות אילו אלמנטים מתסכלים.`;
-  }
-
-  // Dead clicks
-  if (/dead|מת |לא מגיב|לא לחיצ/.test(lq)) {
-    const dead = cd.find(m => m.metricName === 'DeadClickCount');
-    if (!dead) return 'אין נתוני Dead Clicks.';
-    const n = (dead.information||[]).reduce((s,r) => s+parseInt(r.subTotal||0),0);
-    if (n === 0) return '✅ אין Dead Clicks.';
-    return `⚠️ **${n} Dead Clicks** — גולשים לוחצים על אלמנטים שאינם לחיצים.\nבדוק תמונות, טקסטים או אלמנטים שנראים כפתורים אך אינם.`;
-  }
-
-  // עמודים
-  if (/עמוד|דף|url|פופול|pages/.test(lq)) {
-    const pt = cu.find(m => m.metricName === 'Traffic');
-    if (!pt) return 'אין נתוני עמודים.';
-    const pages = (pt.information||[]).sort((a,b)=>parseInt(b.sessionsCount||0)-parseInt(a.sessionsCount||0)).slice(0,8);
-    let ans = `**עמודים לפי תנועה:**\n`;
-    pages.forEach(p => {
-      const url = (p.URL||p.Url||'/').replace(/^https?:\/\/[^/]+/,'') || '/';
-      ans += `• ${url.length>55?url.substring(0,52)+'...':url}: ${parseInt(p.sessionsCount||0).toLocaleString('he-IL')} סשנים\n`;
-    });
-    return ans;
-  }
-
-  // המלצות / שיפורים
-  if (/מומלץ|לשפר|לסגור|לא רלוונט|המלצ|improve/.test(lq)) {
-    const recs = [];
-    const rage = cd.find(m => m.metricName === 'RageClickCount');
-    const dead = cd.find(m => m.metricName === 'DeadClickCount');
-    const rageN = rage ? (rage.information||[]).reduce((s,r)=>s+parseInt(r.subTotal||0),0) : 0;
-    const deadN = dead ? (dead.information||[]).reduce((s,r)=>s+parseInt(r.subTotal||0),0) : 0;
-    if (rageN > 20) recs.push(`🔴 **תקן Rage Clicks** (${rageN}) — צפה בהקלטות וזהה את האלמנט הבעייתי`);
-    if (deadN > 20) recs.push(`🟠 **תקן Dead Clicks** (${deadN}) — אלמנטים שנראים לחיצים אך אינם`);
-    if (traffic) {
-      const rows  = traffic.information||[];
-      const total = rows.reduce((s,r)=>s+parseInt(r.sessionsCount||0),0);
-      const byDev = {};
-      rows.forEach(r=>{ byDev[r.Device]=(byDev[r.Device]||0)+parseInt(r.sessionsCount||0); });
-      const mobilePct = Math.round((byDev['Mobile']||0)/total*100);
-      if (mobilePct > 60) recs.push(`📱 **${mobilePct}% מהתנועה ממובייל** — וודא שה-UX במובייל מיטבי`);
-    }
-    if (recs.length === 0) recs.push('✅ לא נמצאו בעיות בולטות בנתונים הנוכחיים.');
-    return `**המלצות לשיפור:**\n${recs.join('\n')}`;
-  }
-
-  return `לא הצלחתי להבין. נסה:\n• **תנועה** — מאיפה מגיעים גולשים\n• **מכשיר** — מובייל vs דסקטופ\n• **Rage Clicks** — סימני תסכול\n• **Dead Clicks** — לחיצות ללא מענה\n• **עמודים** — הכי פופולריים\n• **המלצות** — מה לשפר`;
 }
 </script>
 </body>
