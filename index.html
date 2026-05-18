@@ -2600,21 +2600,62 @@ function caGaugeSVG(score, size = 90) {
 }
 
 function caHistoryMiniChart(history) {
-  if (!history || !history.length) return '<div style="color:var(--muted);font-size:12px;padding:12px 0">אין היסטוריה עדיין</div>';
+  if (!history || !history.length) return '<div style="color:var(--muted);font-size:12px;padding:12px 0">אין היסטוריה עדיין — מחר בבוקר ייוצר הסנפשוט הראשון אוטומטית</div>';
   const ordered = [...history].reverse();
   const maxS    = Math.max(...ordered.map(h => h.sessions || 0), 1);
-  return `<div class="ca-history-chart">
+
+  // Trend arrow
+  let trendHtml = '';
+  if (ordered.length >= 2) {
+    const first = ordered[0].sessions || 0;
+    const last  = ordered[ordered.length - 1].sessions || 0;
+    const diff  = last - first;
+    const pct   = first > 0 ? Math.round((diff / first) * 100) : 0;
+    const arrow = diff >= 0 ? '↑' : '↓';
+    const col   = diff >= 0 ? '#10b981' : '#ef4444';
+    trendHtml = `<div style="font-size:12px;color:${col};margin-bottom:8px;font-weight:700">${arrow} ${Math.abs(pct)}% לעומת ${ordered.length} ימים קודם</div>`;
+  }
+
+  return trendHtml + `<div class="ca-history-chart">
     ${ordered.map(h => {
       const pct   = Math.round(((h.sessions || 0) / maxS) * 100);
       const color = caScoreColor(h.health_score || 0);
       const d     = new Date(h.date);
       const lbl   = `${d.getDate()}/${d.getMonth() + 1}`;
-      return `<div class="ca-history-bar-wrap">
+      return `<div class="ca-history-bar-wrap" title="ציון: ${h.health_score} | סשנים: ${h.sessions}">
         <div class="ca-history-val" style="color:${color}">${h.health_score ?? '—'}</div>
         <div class="ca-history-bar" style="height:${Math.max(pct * 0.48, 4)}px;background:${color};opacity:0.75"></div>
         <div class="ca-history-date">${lbl}</div>
       </div>`;
     }).join('')}
+  </div>`;
+}
+
+function caCitiesSection(history) {
+  // Collect cities from all snapshots (today's = first entry)
+  if (!history || !history.length) return '';
+  const latest = history[0];
+  let cities = [];
+  try {
+    cities = typeof latest.top_cities === 'string'
+      ? JSON.parse(latest.top_cities)
+      : (latest.top_cities || []);
+  } catch(e) { return ''; }
+  if (!cities.length) return '';
+
+  const maxN  = Math.max(...cities.map(c => c.סשנים || 0), 1);
+  const rows  = cities.slice(0, 10).map(c => {
+    const pct = Math.round(((c.סשנים || 0) / maxN) * 100);
+    return `<div class="ca-breakdown-row">
+      <div class="ca-breakdown-lbl">📍 ${c.עיר || 'לא ידוע'}</div>
+      <div class="ca-breakdown-bar-bg"><div class="ca-breakdown-bar-fill" style="width:${pct}%;background:#6366f1"></div></div>
+      <div class="ca-breakdown-n">${c.סשנים}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="ca-breakdown">
+    <div class="ca-breakdown-title">📍 ערים מובילות (3 ימים)</div>
+    ${rows}
   </div>`;
 }
 
@@ -2840,6 +2881,8 @@ async function showClarityDetail(clientId) {
       <div class="ca-breakdown-title">📡 פילוח לפי מקור ומכשיר</div>
       ${srcRows || '<div style="color:var(--muted);font-size:13px">אין נתונים</div>'}
     </div>
+
+    ${caCitiesSection(history)}
 
     ${c?.clarity_token ? `
     <div class="clarity-chat" id="clarity-chat-${clientId}">
