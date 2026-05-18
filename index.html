@@ -285,6 +285,50 @@
   @keyframes spin { to { transform:rotate(360deg); } }
   .ca-empty { text-align:center; padding:60px; color:var(--muted); font-size:14px; }
   .ca-error-msg { background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); border-radius:10px; padding:12px 16px; color:#f87171; font-size:13px; margin-bottom:16px; }
+  .ca-updated { font-size:10px; color:var(--muted); margin-top:6px; }
+  .ca-updated.fresh { color:#10b981; }
+  .ca-updated.stale { color:#f59e0b; }
+  .ca-insight-group { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px 20px; margin-bottom:12px; }
+  .ca-insight-group-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+  .ca-insight-row { display:flex; align-items:flex-start; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); }
+  .ca-insight-row:last-child { border-bottom:none; padding-bottom:0; }
+  .ca-insight-icon { font-size:18px; line-height:1; flex-shrink:0; margin-top:1px; }
+  .ca-insight-text { font-size:13px; font-weight:600; color:var(--text); }
+  .ca-insight-detail { font-size:11px; color:var(--muted); margin-top:2px; }
+  .ca-pages-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .ca-pages-table th { text-align:right; padding:6px 8px; color:var(--muted); font-weight:600; border-bottom:1px solid var(--border); font-size:11px; }
+  .ca-pages-table td { padding:7px 8px; border-bottom:1px solid var(--border); color:var(--text); }
+  .ca-pages-table tr:last-child td { border-bottom:none; }
+  .ca-pages-table .url-cell { max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted2); direction:ltr; text-align:left; }
+  .ca-pill { display:inline-block; padding:2px 7px; border-radius:20px; font-size:10px; font-weight:700; }
+  .ca-pill.red { background:rgba(239,68,68,0.15); color:#f87171; }
+  .ca-pill.yellow { background:rgba(245,158,11,0.15); color:#fbbf24; }
+  .ca-pill.green { background:rgba(16,185,129,0.15); color:#34d399; }
+  /* ── Search Terms Tab ── */
+  .st-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+  .st-select { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px 12px; color:var(--text); font-family:'Heebo',sans-serif; font-size:13px; outline:none; min-width:240px; cursor:pointer; }
+  .st-select:focus { border-color:var(--accent); }
+  .st-day-group { display:flex; gap:4px; }
+  .st-day-btn { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:6px 12px; color:var(--muted2); font-size:12px; font-family:'Heebo',sans-serif; cursor:pointer; transition:all 0.15s; font-weight:600; }
+  .st-day-btn:hover { border-color:var(--accent); color:var(--text); }
+  .st-day-btn.active { background:var(--accent); border-color:var(--accent); color:white; }
+  .st-load-btn { background:var(--accent); color:white; border:none; border-radius:8px; padding:8px 20px; font-size:13px; font-weight:700; font-family:'Heebo',sans-serif; cursor:pointer; transition:opacity 0.2s; }
+  .st-load-btn:hover { opacity:0.85; }
+  .st-load-btn:disabled { opacity:0.4; cursor:default; }
+  .st-subtabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+  .st-subtab { background:transparent; border:1px solid transparent; border-radius:7px; padding:6px 14px; color:var(--muted2); font-size:12px; font-weight:600; font-family:'Heebo',sans-serif; cursor:pointer; transition:all 0.15s; }
+  .st-subtab:hover { background:var(--surface2); color:var(--text); }
+  .st-subtab.active { background:var(--surface3); border-color:var(--border); color:var(--text); }
+  .st-tabpanel.hidden { display:none; }
+  .st-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .st-table th { padding:8px 10px; text-align:right; color:var(--muted); font-weight:600; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .st-table td { padding:7px 10px; border-bottom:1px solid rgba(30,45,69,0.5); vertical-align:top; }
+  .st-table tr:hover td { background:var(--surface2); }
+  .st-term { font-size:12px; color:var(--text); max-width:260px; word-break:break-word; }
+  .st-mt-badge { font-size:10px; padding:2px 7px; border-radius:10px; font-weight:700; background:rgba(59,130,246,0.15); color:var(--accent2); }
+  .st-cat-badge { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700; }
+  .st-copy-btn { background:var(--surface3); border:1px solid var(--border); border-radius:6px; padding:5px 12px; color:var(--muted2); font-size:11px; font-weight:700; font-family:'Heebo',sans-serif; cursor:pointer; transition:all 0.15s; }
+  .st-copy-btn:hover { border-color:var(--accent); color:var(--accent2); }
 </style>
 </head>
 <body>
@@ -344,6 +388,7 @@
   <div class="tabs" id="tabs">
     <button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>
     <button class="tab" onclick="showClarityTab()" id="tab-clarity">🔍 Clarity</button>
+    <button class="tab" onclick="showSearchTermsTab()" id="tab-st">🚫 Negative KWs</button>
   </div>
 </div>
 
@@ -2371,7 +2416,8 @@ function buildTabs() {
   document.getElementById('tabs').innerHTML =
     `<button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>` +
     clients.map(c=>`<button class="tab" id="tab-${c.id}" onclick="showClient(${c.id})">${c.business_name}</button>`).join('') +
-    `<button class="tab" onclick="showClarityTab()" id="tab-clarity">🔍 Clarity</button>`;
+    `<button class="tab" onclick="showClarityTab()" id="tab-clarity">🔍 Clarity</button>` +
+    `<button class="tab" onclick="showSearchTermsTab()" id="tab-st">🚫 Negative KWs</button>`;
 }
 
 function showToast(msg, color='green') {
@@ -2908,6 +2954,227 @@ async function showClarityDetail(clientId) {
   if (c?.clarity_token) {
     toggleClarityChat(clientId);
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SEARCH TERMS / NEGATIVE KEYWORDS TAB
+// ══════════════════════════════════════════════════════════════
+
+const ST_ACCOUNTS = [
+  { id:'5696308862', name:'Aero Duct | Main',            profile:'aero_duct'   },
+  { id:'3776131548', name:'Ceriatric Center',             profile:'generic'     },
+  { id:'5093579819', name:'The ductors',                  profile:'the_ductors' },
+  { id:'9067519933', name:'A1 Duct Prime LLC - West',     profile:'generic'     },
+  { id:'9540110956', name:'ASBIT',                        profile:'generic'     },
+  { id:'4909283595', name:'Aero Duct | Jacksonville',     profile:'aero_duct'   },
+  { id:'9995980948', name:'Agile Pro Solutions',          profile:'generic'     },
+  { id:'6505741931', name:'Asif',                         profile:'generic'     },
+  { id:'6587884623', name:'SouliTek',                     profile:'generic'     },
+  { id:'8365449172', name:'hay scaping',                  profile:'generic'     },
+  { id:'1757664299', name:'דני ספרים',                   profile:'generic'     },
+  { id:'8620950943', name:'מרכז הבשר',                   profile:'generic'     },
+  { id:'9731739756', name:'שייקה מערכות כיבוי אש',      profile:'generic'     },
+];
+
+const ST_PROFILES = {
+  aero_duct: {
+    blacklist:  ['lint eater','for drill','daytona','savannah','miami','gainesville','ocala',' rv ','rv duct','heat duct'],
+    diy_roots:  ['do you need to','worth the money','does it really work','before and after','average cost','cost calculator','how to','diy','how much','price list'],
+    whitelist:  [],
+    hi_impr: 100, pain_cost: 50, pain_clicks: 5
+  },
+  the_ductors: {
+    blacklist:  [],
+    diy_roots:  [' how ','diy','process','parts','baking soda','spray',' buy ','cleaner'],
+    whitelist:  ['tampa','st. pete','st pete','clearwater','bradenton','sarasota','spring hill','orlando','kissimmee','apopka','clermont','plant city','winter haven'],
+    hi_impr: 150, pain_cost: 120, pain_clicks: 7
+  },
+  generic: {
+    blacklist:  [],
+    diy_roots:  ['how to','diy','tutorial',' cheap ',' free '],
+    whitelist:  [],
+    hi_impr: 200, pain_cost: 50, pain_clicks: 5
+  }
+};
+
+let stLastSets = {};
+
+function stSetActiveTab() {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-st')?.classList.add('active');
+}
+
+function showSearchTermsTab() {
+  stSetActiveTab();
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="st-toolbar">
+      <select class="st-select" id="st-account-sel">
+        ${ST_ACCOUNTS.map(a => `<option value="${a.id}" data-profile="${a.profile}">${a.name}</option>`).join('')}
+      </select>
+      <div class="st-day-group">
+        ${[7,14,30,60,90].map(d => `<button class="st-day-btn${d===30?' active':''}" data-days="${d}">${d}d</button>`).join('')}
+      </div>
+      <button class="st-load-btn" id="st-load-btn" onclick="stLoadData()">⚡ טען נתונים</button>
+    </div>
+    <div id="st-content"><div class="ca-empty">בחר חשבון ולחץ "טען נתונים"</div></div>
+  `;
+  document.querySelectorAll('.st-day-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.st-day-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+}
+
+async function stLoadData() {
+  const sel     = document.getElementById('st-account-sel');
+  const days    = parseInt(document.querySelector('.st-day-btn.active')?.dataset.days) || 30;
+  const content = document.getElementById('st-content');
+  const btn     = document.getElementById('st-load-btn');
+
+  btn.disabled = true; btn.textContent = 'טוען...';
+  content.innerHTML = '<div class="ca-loading-spinner"><div class="ca-spin"></div>מושך search terms מ-Google Ads...</div>';
+
+  try {
+    const res  = await fetch(`http://localhost:3001/search-terms/${sel.value}?days=${days}`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'שגיאה לא ידועה');
+    const profile = sel.options[sel.selectedIndex].dataset.profile;
+    stRenderResults(json.data, profile, sel.options[sel.selectedIndex].text);
+  } catch(e) {
+    content.innerHTML = `<div class="ca-error-msg">❌ ${e.message}<br><small>וודא שהשרת רץ על port 3001 ושה-Google Ads API מוגדר נכון</small></div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '⚡ טען נתונים';
+  }
+}
+
+function stAnalyze(rows, profileKey) {
+  const cfg  = ST_PROFILES[profileKey] || ST_PROFILES.generic;
+  const recs = [];
+  const nonFlStates = ['AL','AK','AZ','AR','CA','CO','CT','DE','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+
+  for (const row of rows) {
+    const t = row.term.toLowerCase();
+    let cat = null, mt = null, reason = null;
+
+    for (const bl of cfg.blacklist) {
+      if (t.includes(bl.toLowerCase())) { cat='geo'; mt='phrase'; reason=`מכיל "${bl}"`; break; }
+    }
+
+    if (!cat && cfg.whitelist.length > 0) {
+      const badState = nonFlStates.find(s => new RegExp(`\\b${s}\\b`, 'i').test(t));
+      if (badState) { cat='geo'; mt='phrase'; reason=`מדינה לא מורשית: ${badState}`; }
+    }
+
+    if (!cat) {
+      for (const root of cfg.diy_roots) {
+        if (t.includes(root.toLowerCase())) { cat='diy'; mt='phrase'; reason=`מידעני: "${root}"`; break; }
+      }
+    }
+
+    if (!cat && row.impressions >= cfg.hi_impr && row.clicks === 0) {
+      cat='hi_imp'; mt='exact'; reason=`${row.impressions} חשיפות, 0 הקלקות`;
+    }
+
+    if (!cat && row.conversions === 0 && (row.cost >= cfg.pain_cost || row.clicks >= cfg.pain_clicks)) {
+      cat='budget_bleeder'; mt='exact'; reason=`$${row.cost.toFixed(2)}, ${row.clicks} הקלקות, 0 המרות`;
+    }
+
+    if (cat) recs.push({ ...row, cat, mt, reason });
+  }
+
+  const pri = { budget_bleeder:4, geo:3, diy:2, hi_imp:1 };
+  return recs.sort((a,b) => (pri[b.cat]-pri[a.cat]) || b.cost-a.cost);
+}
+
+function stCopyList(setKey) {
+  const items = stLastSets[setKey];
+  if (!items?.length) return;
+  const lines = items.map(r => r.mt === 'exact' ? `[${r.term}]` : `"${r.term}"`);
+  navigator.clipboard.writeText(lines.join('\n'));
+  showToast(`הועתק ${lines.length} ביטויים ✓`);
+}
+
+function stRenderResults(rows, profileKey, accountName) {
+  const content = document.getElementById('st-content');
+  const cfg     = ST_PROFILES[profileKey] || ST_PROFILES.generic;
+  const recs    = stAnalyze(rows, profileKey);
+
+  const totalSpend  = rows.reduce((s,r) => s+r.cost, 0);
+  const totalClicks = rows.reduce((s,r) => s+r.clicks, 0);
+  const totalConv   = rows.reduce((s,r) => s+r.conversions, 0);
+  const totalImpr   = rows.reduce((s,r) => s+r.impressions, 0);
+  const avgCtr      = totalImpr > 0 ? (totalClicks/totalImpr*100) : 0;
+  const wastedSpend = rows.filter(r => r.conversions===0).reduce((s,r) => s+r.cost, 0);
+
+  const irrelevant  = rows.filter(r => r.conversions===0 && r.clicks===0 && r.impressions>0);
+  const converting  = rows.filter(r => r.conversions>0).sort((a,b) => b.conversions-a.conversions);
+  const clicksNoConv= rows.filter(r => r.clicks>0 && r.conversions===0).sort((a,b) => b.cost-a.cost);
+  const lowCtr      = rows.filter(r => r.impressions>=cfg.hi_impr && r.clicks>0 && r.ctr<0.02);
+
+  stLastSets = { recs, irrelevant, converting, clicksNoConv, lowCtr };
+
+  const catLabels = { budget_bleeder:'💸 בזבוז', geo:'📍 גיאו', diy:'🔧 DIY', hi_imp:'📉 Hi-Imp' };
+  const catColors = { budget_bleeder:'#ef4444', geo:'#f59e0b', diy:'#8b5cf6', hi_imp:'#64748b' };
+
+  function termTable(items, setKey, showCopy=true) {
+    if (!items.length) return '<div class="ca-empty">אין ביטויים בקטגוריה זו</div>';
+    const copyBtn = showCopy
+      ? `<button class="st-copy-btn" onclick="stCopyList('${setKey}')">📋 העתק הכל (${items.length})</button>`
+      : '';
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:13px;color:var(--muted)">${items.length} ביטויים</span>${copyBtn}
+      </div>
+      <div style="overflow-x:auto">
+        <table class="st-table">
+          <thead><tr>
+            <th>ביטוי חיפוש</th><th>קמפיין</th><th>Match</th><th>חשיפות</th><th>הקלקות</th><th>עלות</th><th>המרות</th><th>סיבה</th>
+          </tr></thead>
+          <tbody>
+            ${items.map(r => `<tr>
+              <td class="st-term">${r.term||''}</td>
+              <td style="font-size:11px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.campaign_name||''}</td>
+              <td><span class="st-mt-badge">${r.mt||r.match_type||''}</span></td>
+              <td>${(r.impressions||0).toLocaleString()}</td>
+              <td>${r.clicks||0}</td>
+              <td>$${(r.cost||0).toFixed(2)}</td>
+              <td style="color:${r.conversions>0?'var(--green)':'var(--muted)'}">${(r.conversions||0).toFixed(0)}</td>
+              <td>${r.cat ? `<span class="st-cat-badge" style="background:${catColors[r.cat]}22;color:${catColors[r.cat]}">${catLabels[r.cat]||r.cat}</span>` : ''}<span style="font-size:10px;color:var(--muted);margin-right:4px">${r.reason||''}</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  const tabs = [
+    { id:'recs',       label:`🎯 המלצות לשלילה (${recs.length})`,     content: termTable(recs,         'recs',        true)  },
+    { id:'irrelevant', label:`❌ לא רלוונטיים (${irrelevant.length})`, content: termTable(irrelevant,   'irrelevant',  true)  },
+    { id:'converting', label:`✅ ממירים (${converting.length})`,       content: termTable(converting,   'converting',  false) },
+    { id:'waste',      label:`💸 בזבוז (${clicksNoConv.length})`,      content: termTable(clicksNoConv, 'clicksNoConv',true)  },
+    { id:'lowctr',     label:`📉 CTR נמוך (${lowCtr.length})`,         content: termTable(lowCtr,       'lowCtr',      true)  },
+  ];
+
+  content.innerHTML = `
+    <div class="kpi-grid" style="margin-bottom:20px">
+      <div class="kpi-card"><div class="kpi-label">השקעה כוללת</div><div class="kpi-val">$${totalSpend.toFixed(0)}</div><div class="kpi-sub">${rows.length} ביטויים</div></div>
+      <div class="kpi-card"><div class="kpi-label">CTR ממוצע</div><div class="kpi-val">${avgCtr.toFixed(1)}%</div><div class="kpi-sub">${totalClicks.toLocaleString()} הקלקות</div></div>
+      <div class="kpi-card"><div class="kpi-label">המרות</div><div class="kpi-val" style="color:var(--green)">${totalConv.toFixed(0)}</div><div class="kpi-sub">מ-${converting.length} ביטויים ממירים</div></div>
+      <div class="kpi-card"><div class="kpi-label">בזבוז (ללא המרה)</div><div class="kpi-val" style="color:var(--red)">$${wastedSpend.toFixed(0)}</div><div class="kpi-sub">${totalSpend>0?Math.round(wastedSpend/totalSpend*100):0}% מהתקציב</div></div>
+      <div class="kpi-card"><div class="kpi-label">🚫 לשלילה</div><div class="kpi-val" style="color:var(--yellow)">${recs.length}</div><div class="kpi-sub">המלצות אוטומטיות</div></div>
+    </div>
+    <div class="st-subtabs" id="st-subtabs">
+      ${tabs.map((t,i) => `<button class="st-subtab${i===0?' active':''}" data-stab="${t.id}" onclick="stSwitchTab('${t.id}')">${t.label}</button>`).join('')}
+    </div>
+    <div id="st-tab-content">
+      ${tabs.map((t,i) => `<div class="st-tabpanel${i===0?'':' hidden'}" id="st-panel-${t.id}">${t.content}</div>`).join('')}
+    </div>`;
+}
+
+function stSwitchTab(id) {
+  document.querySelectorAll('.st-subtab').forEach(b  => b.classList.toggle('active', b.dataset.stab===id));
+  document.querySelectorAll('.st-tabpanel').forEach(p => p.classList.toggle('hidden', p.id !== `st-panel-${id}`));
 }
 </script>
 </body>
