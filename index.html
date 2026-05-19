@@ -329,6 +329,16 @@
   .st-cat-badge { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700; }
   .st-copy-btn { background:var(--surface3); border:1px solid var(--border); border-radius:6px; padding:5px 12px; color:var(--muted2); font-size:11px; font-weight:700; font-family:'Heebo',sans-serif; cursor:pointer; transition:all 0.15s; }
   .st-copy-btn:hover { border-color:var(--accent); color:var(--accent2); }
+  .st-filter-box { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:0; margin-bottom:16px; overflow:hidden; position:sticky; top:60px; z-index:89; }
+  .st-filter-row { display:flex; align-items:center; gap:12px; padding:10px 16px; }
+  .st-filter-label { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; min-width:60px; flex-shrink:0; }
+  .st-filter-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1; }
+  .st-camp-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:10px 16px; background:var(--surface); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; }
+  .st-camp-btn { background:transparent; border:1px solid var(--border); border-radius:7px; padding:5px 12px; color:var(--muted2); font-size:12px; font-weight:600; font-family:'Heebo',sans-serif; cursor:pointer; transition:all 0.15s; white-space:nowrap; display:flex; align-items:center; gap:6px; }
+  .st-camp-btn:hover { border-color:var(--accent); color:var(--text); background:var(--surface2); }
+  .st-camp-btn.active { background:var(--accent); border-color:var(--accent); color:white; }
+  .st-camp-btn.active .st-camp-count { background:rgba(255,255,255,0.25); }
+  .st-camp-count { background:var(--surface3); border-radius:10px; padding:1px 7px; font-size:10px; font-weight:700; }
 </style>
 </head>
 <body>
@@ -2415,9 +2425,9 @@ async function saveCampBudget(campId, clientId) {
 function buildTabs() {
   document.getElementById('tabs').innerHTML =
     `<button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>` +
-    clients.map(c=>`<button class="tab" id="tab-${c.id}" onclick="showClient(${c.id})">${c.business_name}</button>`).join('') +
     `<button class="tab" onclick="showClarityTab()" id="tab-clarity">🔍 Clarity</button>` +
-    `<button class="tab" onclick="showSearchTermsTab()" id="tab-st">🚫 Negative KWs</button>`;
+    `<button class="tab" onclick="showSearchTermsTab()" id="tab-st">🚫 Negative KWs</button>` +
+    clients.map(c=>`<button class="tab" id="tab-${c.id}" onclick="showClient(${c.id})">${c.business_name}</button>`).join('');
 }
 
 function showToast(msg, color='green') {
@@ -2997,7 +3007,7 @@ const ST_PROFILES = {
   }
 };
 
-let stLastSets = {};
+let stLastSets = {}, stRawRows = [], stCurrentProfile = 'generic';
 
 function stSetActiveTab() {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -3008,16 +3018,21 @@ function showSearchTermsTab() {
   stSetActiveTab();
   const main = document.getElementById('main');
   main.innerHTML = `
-    <div class="st-toolbar">
-      <select class="st-select" id="st-account-sel">
-        ${ST_ACCOUNTS.map(a => `<option value="${a.id}" data-profile="${a.profile}">${a.name}</option>`).join('')}
-      </select>
-      <div class="st-day-group">
-        ${[7,14,30,60,90].map(d => `<button class="st-day-btn${d===30?' active':''}" data-days="${d}">${d}d</button>`).join('')}
+    <div class="st-filter-box" id="st-filter-box">
+      <div class="st-filter-row">
+        <span class="st-filter-label">🏢 חשבון</span>
+        <div class="st-filter-controls">
+          <select class="st-select" id="st-account-sel" onchange="stOnAccountChange()">
+            ${ST_ACCOUNTS.map(a => `<option value="${a.id}" data-profile="${a.profile}">${a.name}</option>`).join('')}
+          </select>
+          <div class="st-day-group">
+            ${[7,14,30,60,90].map(d => `<button class="st-day-btn${d===30?' active':''}" data-days="${d}">${d}d</button>`).join('')}
+          </div>
+          <button class="st-load-btn" id="st-load-btn" onclick="stLoadData()">⚡ טען</button>
+        </div>
       </div>
-      <button class="st-load-btn" id="st-load-btn" onclick="stLoadData()">⚡ טען נתונים</button>
     </div>
-    <div id="st-content"><div class="ca-empty">בחר חשבון ולחץ "טען נתונים"</div></div>
+    <div id="st-content"><div class="ca-empty">בחר חשבון ולחץ "⚡ טען"</div></div>
   `;
   document.querySelectorAll('.st-day-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -3025,6 +3040,11 @@ function showSearchTermsTab() {
       btn.classList.add('active');
     });
   });
+}
+
+function stOnAccountChange() {
+  document.getElementById('st-content').innerHTML = '<div class="ca-empty">לחץ "⚡ טען" לטעינת החשבון החדש</div>';
+  stRawRows = [];
 }
 
 async function stLoadData() {
@@ -3040,8 +3060,9 @@ async function stLoadData() {
     const res  = await fetch(`http://localhost:3001/search-terms/${sel.value}?days=${days}`);
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'שגיאה לא ידועה');
-    const profile = sel.options[sel.selectedIndex].dataset.profile;
-    stRenderResults(json.data, profile, sel.options[sel.selectedIndex].text);
+    stRawRows = json.data;
+    stCurrentProfile = sel.options[sel.selectedIndex].dataset.profile;
+    stRenderResults(stRawRows, stCurrentProfile);
   } catch(e) {
     content.innerHTML = `<div class="ca-error-msg">❌ ${e.message}<br><small>וודא שהשרת רץ על port 3001 ושה-Google Ads API מוגדר נכון</small></div>`;
   } finally {
@@ -3049,39 +3070,103 @@ async function stLoadData() {
   }
 }
 
+// ── Smart intent classifier ───────────────────────────────────
+const ST_INTENT = {
+  // Always keep — proven buyer signals
+  keep_commercial: ['near me','same day','same-day',' service',' services',' company',' companies','professional','contractor',' hire ',' book ',' schedule','appointment','call us','free quote','free estimate','emergency','urgent','asap','24/7','local '],
+  keep_pain:       ['not drying','not dry','drying slow','takes too long','taking too long','clothes not','burning smell','smells like','overheating','won\'t start','not working','fire hazard','fire risk','clogged dryer','blocked vent','dryer fire'],
+  keep_research:   ['how much does','how much is','what does','cost near','price near','reviews','rated','best rated','top rated','certified','licensed','insured','bonded'],
+  // Negative — wrong intent
+  neg_diy:         ['how to ','how do i','how do you','diy ','do it yourself','do yourself','can i ','myself','tutorial','step by step','step-by-step',' steps to','youtube','instructions',' guide to',' guide for'],
+  neg_product:     [' kit',' brush',' tool ',' attachment',' equipment',' supplies',' supply',' parts','walmart','home depot','amazon','lowe\'s','lowes',' for drill','lint eater','lint brush',' whip ',' cleaner bottle',' spray '],
+  neg_jobs:        [' job ',' jobs',' career','hiring','salary','technician job','employment',' resume',' opening',' position'],
+  neg_meta:        ['coupon','groupon','promo code','discount code',' scam',' fraud',' complaint',' lawsuit',' bbb ','ripoff','rip off'],
+};
+
+function stIntentScore(term) {
+  const t = term.toLowerCase();
+  let score = 0;
+  let reason = null;
+
+  // Pain phrases = highest commercial intent (someone's dryer is broken NOW)
+  if (ST_INTENT.keep_pain.some(p => t.includes(p)))       { score += 5; }
+  // "near me / service / company / professional" = buyer
+  if (ST_INTENT.keep_commercial.some(p => t.includes(p))) { score += 3; }
+  // Research = probably a buyer doing due diligence
+  if (ST_INTENT.keep_research.some(p => t.includes(p)))   { score += 2; }
+
+  const diyHit  = ST_INTENT.neg_diy.find(p => t.includes(p));
+  const prodHit = ST_INTENT.neg_product.find(p => t.includes(p));
+  const jobHit  = ST_INTENT.neg_jobs.find(p => t.includes(p));
+  const metaHit = ST_INTENT.neg_meta.find(p => t.includes(p));
+
+  if (diyHit)  { score -= 5; reason = `DIY: "${diyHit.trim()}"`; }
+  if (prodHit) { score -= 4; reason = `מוצר/ציוד: "${prodHit.trim()}"`; }
+  if (jobHit)  { score -= 8; reason = `דרושים: "${jobHit.trim()}"`; }
+  if (metaHit) { score -= 6; reason = `קופון/תלונה: "${metaHit.trim()}"`; }
+
+  return { score, negReason: reason };
+}
+
 function stAnalyze(rows, profileKey) {
-  const cfg  = ST_PROFILES[profileKey] || ST_PROFILES.generic;
-  const recs = [];
+  const cfg = ST_PROFILES[profileKey] || ST_PROFILES.generic;
   const nonFlStates = ['AL','AK','AZ','AR','CA','CO','CT','DE','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+
+  // Dynamic CPA from account data
+  const convRows = rows.filter(r => r.conversions > 0);
+  const accountCpa = convRows.length >= 3
+    ? convRows.reduce((s,r) => s + r.cost, 0) / convRows.reduce((s,r) => s + r.conversions, 0)
+    : cfg.pain_cost;
+  const painCost   = Math.max(accountCpa * 1.5, cfg.pain_cost);
+  const painClicks = cfg.pain_clicks;
+
+  const recs = [];
 
   for (const row of rows) {
     const t = row.term.toLowerCase();
+    const isExact = (row.match_type || '').toUpperCase().includes('EXACT');
+
+    // Rule 0: proven converter → never touch, regardless of cost
+    if (row.conversions > 0) continue;
+
+    const { score: intentScore, negReason } = stIntentScore(t);
+
+    // Positive commercial intent → don't touch (even if no conversion yet)
+    if (intentScore >= 3 && !isExact) continue;
+    if (intentScore >= 1 && row.clicks < 5) continue; // not enough data on ambiguous terms
+
     let cat = null, mt = null, reason = null;
 
+    // 1. Geographic leak (always first priority)
     for (const bl of cfg.blacklist) {
-      if (t.includes(bl.toLowerCase())) { cat='geo'; mt='phrase'; reason=`מכיל "${bl}"`; break; }
+      if (t.includes(bl.toLowerCase())) { cat='geo'; mt='phrase'; reason=`גיאו: "${bl}"`; break; }
     }
-
     if (!cat && cfg.whitelist.length > 0) {
-      const badState = nonFlStates.find(s => new RegExp(`\\b${s}\\b`, 'i').test(t));
-      if (badState) { cat='geo'; mt='phrase'; reason=`מדינה לא מורשית: ${badState}`; }
+      const bad = nonFlStates.find(s => new RegExp(`\\b${s}\\b`,'i').test(t));
+      if (bad) { cat='geo'; mt='phrase'; reason=`מדינה לא מורשית: ${bad}`; }
     }
 
-    if (!cat) {
-      for (const root of cfg.diy_roots) {
-        if (t.includes(root.toLowerCase())) { cat='diy'; mt='phrase'; reason=`מידעני: "${root}"`; break; }
+    // 2. Wrong intent (DIY / product / jobs / scam) — phrase match to catch all variants
+    if (!cat && intentScore <= -4) {
+      cat='diy'; mt='phrase'; reason=negReason || 'כוונה לא מסחרית';
+    }
+
+    // 3. High impressions / 0 clicks → hurts Quality Score
+    if (!cat && row.impressions >= cfg.hi_impr && row.clicks === 0) {
+      cat='hi_imp'; mt='exact'; reason=`${row.impressions.toLocaleString()} חשיפות, 0 הקלקות`;
+    }
+
+    // 4. Budget bleeder: non-exact only, need ≥2 clicks to have signal, use dynamic threshold
+    if (!cat && !isExact && row.clicks >= 2 && row.conversions === 0) {
+      const wordCount = row.term.trim().split(/\s+/).length;
+      if (row.cost >= painCost || row.clicks >= painClicks) {
+        cat='budget_bleeder';
+        mt = wordCount >= 3 ? 'phrase' : 'exact'; // pattern → phrase; specific → exact
+        reason=`$${row.cost.toFixed(2)}, ${row.clicks} הקלקות | CPA ממוצע: $${accountCpa.toFixed(0)}`;
       }
     }
 
-    if (!cat && row.impressions >= cfg.hi_impr && row.clicks === 0) {
-      cat='hi_imp'; mt='exact'; reason=`${row.impressions} חשיפות, 0 הקלקות`;
-    }
-
-    if (!cat && row.conversions === 0 && (row.cost >= cfg.pain_cost || row.clicks >= cfg.pain_clicks)) {
-      cat='budget_bleeder'; mt='exact'; reason=`$${row.cost.toFixed(2)}, ${row.clicks} הקלקות, 0 המרות`;
-    }
-
-    if (cat) recs.push({ ...row, cat, mt, reason });
+    if (cat) recs.push({ ...row, cat, mt, reason, intentScore });
   }
 
   const pri = { budget_bleeder:4, geo:3, diy:2, hi_imp:1 };
@@ -3096,23 +3181,34 @@ function stCopyList(setKey) {
   showToast(`הועתק ${lines.length} ביטויים ✓`);
 }
 
-function stRenderResults(rows, profileKey, accountName) {
-  const content = document.getElementById('st-content');
-  const cfg     = ST_PROFILES[profileKey] || ST_PROFILES.generic;
-  const recs    = stAnalyze(rows, profileKey);
+function stApplyFilter(camp) {
+  stRender(stRawRows, camp);
+}
 
-  const totalSpend  = rows.reduce((s,r) => s+r.cost, 0);
-  const totalClicks = rows.reduce((s,r) => s+r.clicks, 0);
-  const totalConv   = rows.reduce((s,r) => s+r.conversions, 0);
-  const totalImpr   = rows.reduce((s,r) => s+r.impressions, 0);
-  const avgCtr      = totalImpr > 0 ? (totalClicks/totalImpr*100) : 0;
-  const wastedSpend = rows.filter(r => r.conversions===0).reduce((s,r) => s+r.cost, 0);
+function stRenderResults(rows, profileKey) {
+  stRender(rows, '__all__');
+}
 
-  const irrelevant  = rows.filter(r => r.conversions===0 && r.clicks===0 && r.impressions>0);
-  const converting  = rows.filter(r => r.conversions>0).sort((a,b) => b.conversions-a.conversions);
-  const clicksNoConv= rows.filter(r => r.clicks>0 && r.conversions===0).sort((a,b) => b.cost-a.cost);
-  const lowCtr      = rows.filter(r => r.impressions>=cfg.hi_impr && r.clicks>0 && r.ctr<0.02);
+function stRender(allRows, activeCamp) {
+  const content    = document.getElementById('st-content');
+  if (!content) return;
+  const profileKey = stCurrentProfile;
+  const cfg        = ST_PROFILES[profileKey] || ST_PROFILES.generic;
+  const campaigns  = [...new Set(allRows.map(r => r.campaign_name).filter(Boolean))].sort();
+  const rows       = activeCamp === '__all__' ? allRows : allRows.filter(r => r.campaign_name === activeCamp);
+  const showCamp   = activeCamp === '__all__';
 
+  const recs         = stAnalyze(rows, profileKey);
+  const totalSpend   = rows.reduce((s,r) => s+r.cost, 0);
+  const totalClicks  = rows.reduce((s,r) => s+r.clicks, 0);
+  const totalConv    = rows.reduce((s,r) => s+r.conversions, 0);
+  const totalImpr    = rows.reduce((s,r) => s+r.impressions, 0);
+  const avgCtr       = totalImpr > 0 ? (totalClicks/totalImpr*100) : 0;
+  const wastedSpend  = rows.filter(r => r.conversions===0 && !(r.match_type||'').toUpperCase().includes('EXACT')).reduce((s,r) => s+r.cost, 0);
+  const irrelevant   = rows.filter(r => r.conversions===0 && r.clicks===0 && r.impressions>0);
+  const converting   = rows.filter(r => r.conversions>0).sort((a,b) => b.conversions-a.conversions);
+  const clicksNoConv = rows.filter(r => r.clicks>0 && r.conversions===0 && !(r.match_type||'').toUpperCase().includes('EXACT')).sort((a,b) => b.cost-a.cost);
+  const lowCtr       = rows.filter(r => r.impressions>=cfg.hi_impr && r.clicks>0 && r.ctr<0.02);
   stLastSets = { recs, irrelevant, converting, clicksNoConv, lowCtr };
 
   const catLabels = { budget_bleeder:'💸 בזבוז', geo:'📍 גיאו', diy:'🔧 DIY', hi_imp:'📉 Hi-Imp' };
@@ -3120,55 +3216,56 @@ function stRenderResults(rows, profileKey, accountName) {
 
   function termTable(items, setKey, showCopy=true) {
     if (!items.length) return '<div class="ca-empty">אין ביטויים בקטגוריה זו</div>';
-    const copyBtn = showCopy
-      ? `<button class="st-copy-btn" onclick="stCopyList('${setKey}')">📋 העתק הכל (${items.length})</button>`
-      : '';
+    const copyBtn = showCopy ? `<button class="st-copy-btn" onclick="stCopyList('${setKey}')">📋 העתק הכל (${items.length})</button>` : '';
     return `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <span style="font-size:13px;color:var(--muted)">${items.length} ביטויים</span>${copyBtn}
       </div>
-      <div style="overflow-x:auto">
-        <table class="st-table">
-          <thead><tr>
-            <th>ביטוי חיפוש</th><th>קמפיין</th><th>Match</th><th>חשיפות</th><th>הקלקות</th><th>עלות</th><th>המרות</th><th>סיבה</th>
-          </tr></thead>
-          <tbody>
-            ${items.map(r => `<tr>
-              <td class="st-term">${r.term||''}</td>
-              <td style="font-size:11px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.campaign_name||''}</td>
-              <td><span class="st-mt-badge">${r.mt||r.match_type||''}</span></td>
-              <td>${(r.impressions||0).toLocaleString()}</td>
-              <td>${r.clicks||0}</td>
-              <td>$${(r.cost||0).toFixed(2)}</td>
-              <td style="color:${r.conversions>0?'var(--green)':'var(--muted)'}">${(r.conversions||0).toFixed(0)}</td>
-              <td>${r.cat ? `<span class="st-cat-badge" style="background:${catColors[r.cat]}22;color:${catColors[r.cat]}">${catLabels[r.cat]||r.cat}</span>` : ''}<span style="font-size:10px;color:var(--muted);margin-right:4px">${r.reason||''}</span></td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`;
+      <div style="overflow-x:auto"><table class="st-table">
+        <thead><tr>
+          <th>ביטוי חיפוש</th>${showCamp?'<th>קמפיין</th>':''}<th>Match</th><th>חשיפות</th><th>הקלקות</th><th>עלות</th><th>המרות</th><th>סיבה</th>
+        </tr></thead>
+        <tbody>
+          ${items.map(r => `<tr>
+            <td class="st-term">${r.term||''}</td>
+            ${showCamp?`<td style="font-size:11px;color:var(--muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.campaign_name||''}</td>`:''}
+            <td><span class="st-mt-badge">${(r.match_type||'').replace('_',' ').toLowerCase()}</span></td>
+            <td>${(r.impressions||0).toLocaleString()}</td>
+            <td>${r.clicks||0}</td>
+            <td>$${(r.cost||0).toFixed(2)}</td>
+            <td style="color:${r.conversions>0?'var(--green)':'var(--muted)'}">${(r.conversions||0).toFixed(0)}</td>
+            <td>${r.cat?`<span class="st-cat-badge" style="background:${catColors[r.cat]}22;color:${catColors[r.cat]};margin-left:6px">${catLabels[r.cat]||r.cat}</span>`:''}<span style="font-size:10px;color:var(--muted)">${r.reason||''}</span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`;
   }
 
   const tabs = [
-    { id:'recs',       label:`🎯 המלצות לשלילה (${recs.length})`,     content: termTable(recs,         'recs',        true)  },
-    { id:'irrelevant', label:`❌ לא רלוונטיים (${irrelevant.length})`, content: termTable(irrelevant,   'irrelevant',  true)  },
-    { id:'converting', label:`✅ ממירים (${converting.length})`,       content: termTable(converting,   'converting',  false) },
-    { id:'waste',      label:`💸 בזבוז (${clicksNoConv.length})`,      content: termTable(clicksNoConv, 'clicksNoConv',true)  },
-    { id:'lowctr',     label:`📉 CTR נמוך (${lowCtr.length})`,         content: termTable(lowCtr,       'lowCtr',      true)  },
+    { id:'recs',       label:`🎯 המלצות לשלילה (${recs.length})`,     html: termTable(recs,         'recs',        true)  },
+    { id:'irrelevant', label:`❌ לא רלוונטיים (${irrelevant.length})`, html: termTable(irrelevant,   'irrelevant',  true)  },
+    { id:'converting', label:`✅ ממירים (${converting.length})`,       html: termTable(converting,   'converting',  false) },
+    { id:'waste',      label:`💸 בזבוז (${clicksNoConv.length})`,      html: termTable(clicksNoConv, 'clicksNoConv',true)  },
+    { id:'lowctr',     label:`📉 CTR נמוך (${lowCtr.length})`,         html: termTable(lowCtr,       'lowCtr',      true)  },
   ];
 
   content.innerHTML = `
-    <div class="kpi-grid" style="margin-bottom:20px">
-      <div class="kpi-card"><div class="kpi-label">השקעה כוללת</div><div class="kpi-val">$${totalSpend.toFixed(0)}</div><div class="kpi-sub">${rows.length} ביטויים</div></div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:16px">
+      <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0">📁 קמפיין</span>
+      <button class="st-camp-btn${activeCamp==='__all__'?' active':''}" onclick="stApplyFilter('__all__')">כל הקמפיינים <span class="st-camp-count">${allRows.length}</span></button>
+      ${campaigns.map(c=>`<button class="st-camp-btn${activeCamp===c?' active':''}" onclick="stApplyFilter(${JSON.stringify(c).replace(/"/g,'&quot;')})">${c} <span class="st-camp-count">${allRows.filter(r=>r.campaign_name===c).length}</span></button>`).join('')}
+    </div>
+    <div class="kpi-grid" style="margin-bottom:16px">
+      <div class="kpi-card"><div class="kpi-label">השקעה</div><div class="kpi-val">$${totalSpend.toFixed(0)}</div><div class="kpi-sub">${rows.length} ביטויים</div></div>
       <div class="kpi-card"><div class="kpi-label">CTR ממוצע</div><div class="kpi-val">${avgCtr.toFixed(1)}%</div><div class="kpi-sub">${totalClicks.toLocaleString()} הקלקות</div></div>
-      <div class="kpi-card"><div class="kpi-label">המרות</div><div class="kpi-val" style="color:var(--green)">${totalConv.toFixed(0)}</div><div class="kpi-sub">מ-${converting.length} ביטויים ממירים</div></div>
+      <div class="kpi-card"><div class="kpi-label">המרות</div><div class="kpi-val" style="color:var(--green)">${totalConv.toFixed(0)}</div><div class="kpi-sub">מ-${converting.length} ביטויים</div></div>
       <div class="kpi-card"><div class="kpi-label">בזבוז (ללא המרה)</div><div class="kpi-val" style="color:var(--red)">$${wastedSpend.toFixed(0)}</div><div class="kpi-sub">${totalSpend>0?Math.round(wastedSpend/totalSpend*100):0}% מהתקציב</div></div>
       <div class="kpi-card"><div class="kpi-label">🚫 לשלילה</div><div class="kpi-val" style="color:var(--yellow)">${recs.length}</div><div class="kpi-sub">המלצות אוטומטיות</div></div>
     </div>
-    <div class="st-subtabs" id="st-subtabs">
+    <div class="st-subtabs">
       ${tabs.map((t,i) => `<button class="st-subtab${i===0?' active':''}" data-stab="${t.id}" onclick="stSwitchTab('${t.id}')">${t.label}</button>`).join('')}
     </div>
-    <div id="st-tab-content">
-      ${tabs.map((t,i) => `<div class="st-tabpanel${i===0?'':' hidden'}" id="st-panel-${t.id}">${t.content}</div>`).join('')}
+    <div>
+      ${tabs.map((t,i) => `<div class="st-tabpanel${i===0?'':' hidden'}" id="st-panel-${t.id}">${t.html}</div>`).join('')}
     </div>`;
 }
 
