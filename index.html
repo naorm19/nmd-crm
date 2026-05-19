@@ -2986,23 +2986,33 @@ const ST_ACCOUNTS = [
   { id:'9731739756', name:'שייקה מערכות כיבוי אש',      profile:'generic'     },
 ];
 
+// ══════════════════════════════════════════════════════════════════════
+//  ⚙️  SEARCH TERMS CONFIG — ערוך כאן את אזורי השירות והרשימות
+//
+//  service_cities  → ערים/אזורים שאתה כן עובד בהם (לא יסומנו כ-geo negative)
+//  blacklist       → ביטויים שתמיד לשלול (מיקום לא רלוונטי, מוצרים, וכד')
+//  hi_impr         → סף חשיפות ל-"High Impression 0 Clicks"
+//  pain_cost       → הוצאה מינימלית (USD) לסימון כ-Budget Bleeder
+//  pain_clicks     → הקלקות מינימליות לסימון כ-Budget Bleeder
+// ══════════════════════════════════════════════════════════════════════
 const ST_PROFILES = {
   aero_duct: {
-    blacklist:  ['lint eater','for drill','daytona','savannah','miami','gainesville','ocala',' rv ','rv duct','heat duct'],
-    diy_roots:  ['do you need to','worth the money','does it really work','before and after','average cost','cost calculator','how to','diy','how much','price list'],
-    whitelist:  [],
+    blacklist:     ['lint eater','for drill','daytona','savannah','miami','gainesville','ocala',' rv ','rv duct','heat duct'],
+    service_cities:[], // 📍 ריק = לא בודק מדינות; הוסף ערים אם רוצה פילטר גיאוגרפי
     hi_impr: 100, pain_cost: 50, pain_clicks: 5
   },
   the_ductors: {
-    blacklist:  [],
-    diy_roots:  [' how ','diy','process','parts','baking soda','spray',' buy ','cleaner'],
-    whitelist:  ['tampa','st. pete','st pete','clearwater','bradenton','sarasota','spring hill','orlando','kissimmee','apopka','clermont','plant city','winter haven'],
+    blacklist:     [],
+    // 📍 ערים שאתה עובד בהן — ביטויים עם ערים אלו לא יסומנו כ-negative
+    service_cities:['tampa','st. pete','st pete','clearwater','bradenton','sarasota',
+                    'spring hill','brooksville','new port richey','land o lakes',
+                    'orlando','kissimmee','apopka','clermont','plant city','winter haven',
+                    'wesley chapel','zephyrhills','dade city','hudson','holiday','tarpon springs'],
     hi_impr: 150, pain_cost: 120, pain_clicks: 7
   },
   generic: {
-    blacklist:  [],
-    diy_roots:  ['how to','diy','tutorial',' cheap ',' free '],
-    whitelist:  [],
+    blacklist:     [],
+    service_cities:[],
     hi_impr: 200, pain_cost: 50, pain_clicks: 5
   }
 };
@@ -3077,7 +3087,7 @@ async function stLoadData() {
 // ── Smart intent classifier ───────────────────────────────────
 const ST_INTENT = {
   // Always keep — proven buyer signals
-  keep_commercial: ['near me','same day','same-day',' service',' services',' company',' companies','professional','contractor',' hire ',' book ',' schedule','appointment','call us','free quote','free estimate','emergency','urgent','asap','24/7','local '],
+  keep_commercial: ['near me','in my area','around me','close to me','my area','nearby','near by','same day','same-day',' service',' services',' company',' companies','professional','contractor',' hire ',' book ',' schedule','appointment','call us','free quote','free estimate','emergency','urgent','asap','24/7','local '],
   keep_pain:       ['not drying','not dry','drying slow','takes too long','taking too long','clothes not','burning smell','smells like','overheating','won\'t start','not working','fire hazard','fire risk','clogged dryer','blocked vent','dryer fire'],
   keep_research:   ['how much does','how much is','what does','cost near','price near','reviews','rated','best rated','top rated','certified','licensed','insured','bonded'],
   // Negative — wrong intent
@@ -3114,7 +3124,12 @@ function stIntentScore(term) {
 
 function stAnalyze(rows, profileKey) {
   const cfg = ST_PROFILES[profileKey] || ST_PROFILES.generic;
-  const nonFlStates = ['AL','AK','AZ','AR','CA','CO','CT','DE','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+
+  // ── State abbreviations that are also common English words → skip to avoid false positives ──
+  // "in my area" → IN, "near me" → ME, "or" conjunction → OR, etc.
+  const WORD_STATES = new Set(['IN','OR','ME','DE','OK','HI','AL','MA','OH','CO','ID','MO','LA','PA','VA','MS','MD','SC','MT','WV','AR','WA','RI']);
+  // All non-FL US states — used for out-of-area detection
+  const nonFlStates = ['AK','AZ','CA','CT','GA','IL','IA','KS','KY','MI','MN','NE','NV','NH','NJ','NM','NY','NC','ND','SD','TN','TX','UT','VT','WI','WY'];
 
   // Dynamic CPA from account data
   const convRows = rows.filter(r => r.conversions > 0);
@@ -3141,13 +3156,25 @@ function stAnalyze(rows, profileKey) {
 
     let cat = null, mt = null, reason = null;
 
-    // 1. Geographic leak (always first priority)
-    for (const bl of cfg.blacklist) {
-      if (t.includes(bl.toLowerCase())) { cat='geo'; mt='phrase'; reason=`גיאו: "${bl}"`; break; }
-    }
-    if (!cat && cfg.whitelist.length > 0) {
-      const bad = nonFlStates.find(s => new RegExp(`\\b${s}\\b`,'i').test(t));
-      if (bad) { cat='geo'; mt='phrase'; reason=`מדינה לא מורשית: ${bad}`; }
+    // 1. Geographic analysis
+    const serviceCities = cfg.service_cities || [];
+    // If term contains a known service city → this is a valid local search, skip geo check
+    const isOurArea = serviceCities.some(c => t.includes(c.toLowerCase()));
+
+    if (!isOurArea) {
+      // 1a. Blacklist — specific locations/phrases to always exclude
+      for (const bl of cfg.blacklist) {
+        if (t.includes(bl.toLowerCase())) { cat='geo'; mt='phrase'; reason=`גיאו: "${bl}"`; break; }
+      }
+      // 1b. Out-of-state — only when service_cities are defined (= geo-targeted account)
+      //     State must appear at END of search term (prevents "IN" matching "in my area")
+      if (!cat && serviceCities.length > 0) {
+        const bad = nonFlStates.find(s => {
+          if (WORD_STATES.has(s)) return false; // skip abbreviations that are common words
+          return new RegExp(`(^|\\s)${s}\\s*$`, 'i').test(t);
+        });
+        if (bad) { cat='geo'; mt='phrase'; reason=`מדינה לא מורשית: ${bad}`; }
+      }
     }
 
     // 2. Wrong intent (DIY / product / jobs / scam) — phrase match to catch all variants
