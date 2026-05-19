@@ -2995,24 +2995,61 @@ const ST_ACCOUNTS = [
 //  pain_cost       → הוצאה מינימלית (USD) לסימון כ-Budget Bleeder
 //  pain_clicks     → הקלקות מינימליות לסימון כ-Budget Bleeder
 // ══════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════
+//  📍 אזורי שירות — פלורידה (Naor Marziano DM)
+//  עדכון אחרון: 2026-05
+//  כל הביטויים שמכילים ערים אלו לא יסומנו כ-Geo Negative
+// ══════════════════════════════════════════════════════════════════════
+const FL_SERVICE_CITIES = [
+  // ── Tampa Bay & West Coast ──────────────────────────────────────
+  'tampa','brandon','riverview','valrico','apollo beach','ruskin','sun city',
+  'st. petersburg','st pete','st. pete','saint petersburg','pinellas park','gulfport',
+  'clearwater','dunedin','safety harbor','oldsmar','palm harbor','tarpon springs',
+  'spring hill','brooksville','weeki wachee',
+  'new port richey','port richey','hudson','holiday','trinity','odessa',
+  'wesley chapel','zephyrhills','dade city','land o lakes',
+  // ── Bradenton / Sarasota / Charlotte ───────────────────────────
+  'bradenton','palmetto','ellenton','parrish','anna maria','longboat key',
+  'sarasota','siesta key','osprey','nokomis',
+  'venice','englewood','port charlotte','punta gorda','north port','rotonda',
+  // ── Cedar Key / Nature Coast ───────────────────────────────────
+  'cedar key','crystal river','homosassa','inverness',
+  // ── Orlando & Central Florida ──────────────────────────────────
+  'orlando','winter park','maitland','altamonte springs','casselberry','oviedo','longwood',
+  'kissimmee','st cloud','saint cloud','celebration','poinciana',
+  'clermont','minneola','groveland','mascotte',
+  'mount dora','eustis','tavares','leesburg','lady lake',
+  'apopka','sanford','lake mary','heathrow','debary',
+  'plant city','lakeland','auburndale','bartow','haines city','davenport',
+  // ── The Villages / Ocala ───────────────────────────────────────
+  'the villages','ocala','belleview',
+  // ── Sebring / Highlands ────────────────────────────────────────
+  'sebring','avon park','lake placid','lake wales',
+  // ── East Coast / Daytona ───────────────────────────────────────
+  'daytona beach','daytona','ormond beach','new smyrna beach','port orange','edgewater','holly hill',
+  'titusville',
+  'cape canaveral','cocoa beach','cocoa','merritt island','rockledge',
+  'melbourne','palm bay','viera','satellite beach','indialantic','west melbourne',
+];
+
+// ══════════════════════════════════════════════════════════════════════
+//  ⚙️  SEARCH TERMS CONFIG — ערוך כאן את הפרופילים
+// ══════════════════════════════════════════════════════════════════════
 const ST_PROFILES = {
   aero_duct: {
-    blacklist:     ['lint eater','for drill','daytona','savannah','miami','gainesville','ocala',' rv ','rv duct','heat duct'],
-    service_cities:[], // 📍 ריק = לא בודק מדינות; הוסף ערים אם רוצה פילטר גיאוגרפי
+    // ⛔ blacklist = ביטויים שתמיד לשלול (מוצרים, כלים, מתחרים)
+    blacklist:      ['lint eater','for drill',' rv ','rv duct','heat duct','savannah','miami','gainesville'],
+    service_cities: FL_SERVICE_CITIES,
     hi_impr: 100, pain_cost: 50, pain_clicks: 5
   },
   the_ductors: {
-    blacklist:     [],
-    // 📍 ערים שאתה עובד בהן — ביטויים עם ערים אלו לא יסומנו כ-negative
-    service_cities:['tampa','st. pete','st pete','clearwater','bradenton','sarasota',
-                    'spring hill','brooksville','new port richey','land o lakes',
-                    'orlando','kissimmee','apopka','clermont','plant city','winter haven',
-                    'wesley chapel','zephyrhills','dade city','hudson','holiday','tarpon springs'],
+    blacklist:      [],
+    service_cities: FL_SERVICE_CITIES,
     hi_impr: 150, pain_cost: 120, pain_clicks: 7
   },
   generic: {
-    blacklist:     [],
-    service_cities:[],
+    blacklist:      [],
+    service_cities: [],   // ריק = ללא פילטר גיאוגרפי
     hi_impr: 200, pain_cost: 50, pain_clicks: 5
   }
 };
