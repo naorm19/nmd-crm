@@ -3053,36 +3053,22 @@ async function stLoadData() {
   const content = document.getElementById('st-content');
   const btn     = document.getElementById('st-load-btn');
 
-  // הטאב הזה מצריך את השרת המקומי — לא עובד מ-GitHub Pages
-  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:';
-  if (!isLocal) {
-    content.innerHTML = `
-      <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:12px;padding:32px;text-align:center;max-width:520px;margin:40px auto">
-        <div style="font-size:32px;margin-bottom:12px">🖥️</div>
-        <div style="font-size:16px;font-weight:700;color:var(--yellow);margin-bottom:8px">הטאב הזה עובד רק מהמחשב המקומי</div>
-        <div style="font-size:13px;color:var(--muted);line-height:1.7">
-          Negative KWs מושך נתונים מהשרת המקומי (<code style="color:var(--accent2)">localhost:3001</code>).<br>
-          פתח את הדשבורד ישירות מהקובץ על המחשב שלך:
-        </div>
-        <div style="margin-top:16px;background:var(--surface2);border-radius:8px;padding:10px 16px;font-size:12px;color:var(--accent2);direction:ltr;text-align:left;word-break:break-all">
-          C:\Users\נעור\OneDrive\Desktop\Naor Marziano DM - crm\nmd-dashboard\index.html
-        </div>
-      </div>`;
-    return;
-  }
-
   btn.disabled = true; btn.textContent = 'טוען...';
   content.innerHTML = '<div class="ca-loading-spinner"><div class="ca-spin"></div>מושך search terms מ-Google Ads...</div>';
 
+  // Edge Function (Supabase) — works from everywhere including GitHub Pages
+  const EDGE_URL = 'https://jjzvaqtqtfniuxjfyoyb.supabase.co/functions/v1/search-terms';
+  const EDGE_KEY = 'nmd-st-2024';
+
   try {
-    const res  = await fetch(`http://localhost:3001/search-terms/${sel.value}?days=${days}`);
+    const res  = await fetch(`${EDGE_URL}?accountId=${sel.value}&days=${days}&key=${EDGE_KEY}`);
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'שגיאה לא ידועה');
     stRawRows = json.data;
     stCurrentProfile = sel.options[sel.selectedIndex].dataset.profile;
     stRenderResults(stRawRows, stCurrentProfile);
   } catch(e) {
-    content.innerHTML = `<div class="ca-error-msg">❌ ${e.message}<br><small>וודא שהשרת רץ על port 3001 ושה-Google Ads API מוגדר נכון</small></div>`;
+    content.innerHTML = `<div class="ca-error-msg">❌ ${e.message}<br><small>שגיאה בחיבור ל-Google Ads API</small></div>`;
   } finally {
     btn.disabled = false; btn.textContent = '⚡ טען נתונים';
   }
