@@ -3054,7 +3054,27 @@ const ST_PROFILES = {
   }
 };
 
-let stLastSets = {}, stRawRows = [], stCurrentProfile = 'generic';
+let stLastSets = {}, stRawRows = [], stCurrentProfile = 'generic', stCurrentCamp = '__all__';
+let stDismissed = new Set(JSON.parse(localStorage.getItem('nmd_st_dismissed') || '[]'));
+
+function stSaveDismissed() {
+  localStorage.setItem('nmd_st_dismissed', JSON.stringify([...stDismissed]));
+}
+function stMarkSelected() {
+  document.querySelectorAll('.st-row-cb:checked').forEach(cb => stDismissed.add(cb.dataset.term));
+  stSaveDismissed();
+  stRender(stRawRows, stCurrentCamp);
+}
+function stMarkAll(setKey) {
+  (stLastSets[setKey] || []).forEach(r => stDismissed.add(r.term));
+  stSaveDismissed();
+  stRender(stRawRows, stCurrentCamp);
+}
+function stResetDismissed() {
+  stDismissed.clear();
+  localStorage.removeItem('nmd_st_dismissed');
+  stRender(stRawRows, stCurrentCamp);
+}
 
 function stSetActiveTab() {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -3278,16 +3298,19 @@ function stRender(allRows, activeCamp) {
   const rows       = activeCamp === '__all__' ? allRows : allRows.filter(r => r.campaign_name === activeCamp);
   const showCamp   = activeCamp === '__all__';
 
-  const recs         = stAnalyze(rows, profileKey);
+  stCurrentCamp = activeCamp;
+  const nd = t => !stDismissed.has(t); // helper: not dismissed
+
+  const recs         = stAnalyze(rows, profileKey).filter(r => nd(r.term));
   const totalSpend   = rows.reduce((s,r) => s+r.cost, 0);
   const totalClicks  = rows.reduce((s,r) => s+r.clicks, 0);
   const totalConv    = rows.reduce((s,r) => s+r.conversions, 0);
   const totalImpr    = rows.reduce((s,r) => s+r.impressions, 0);
   const avgCtr       = totalImpr > 0 ? (totalClicks/totalImpr*100) : 0;
   const wastedSpend  = rows.filter(r => r.conversions===0 && !(r.match_type||'').toUpperCase().includes('EXACT')).reduce((s,r) => s+r.cost, 0);
-  const converting   = rows.filter(r => r.conversions>0).sort((a,b) => b.conversions-a.conversions);
-  const clicksNoConv = rows.filter(r => r.clicks>0 && r.conversions===0 && r.cost>=100 && !(r.match_type||'').toUpperCase().includes('EXACT')).sort((a,b) => b.cost-a.cost);
-  const lowCtr       = rows.filter(r => r.impressions>=20 && r.clicks===0).sort((a,b) => b.impressions-a.impressions);
+  const converting   = rows.filter(r => r.conversions>0 && nd(r.term)).sort((a,b) => b.conversions-a.conversions);
+  const clicksNoConv = rows.filter(r => r.clicks>0 && r.conversions===0 && r.cost>=100 && nd(r.term) && !(r.match_type||'').toUpperCase().includes('EXACT')).sort((a,b) => b.cost-a.cost);
+  const lowCtr       = rows.filter(r => r.impressions>=20 && r.clicks===0 && nd(r.term)).sort((a,b) => b.impressions-a.impressions);
   stLastSets = { recs, converting, clicksNoConv, lowCtr };
 
   const catLabels = { budget_bleeder:'💸 בזבוז', geo:'📍 גיאו', diy:'🔧 DIY', hi_imp:'📉 Hi-Imp' };
@@ -3295,17 +3318,22 @@ function stRender(allRows, activeCamp) {
 
   function termTable(items, setKey, showCopy=true) {
     if (!items.length) return '<div class="ca-empty">אין ביטויים בקטגוריה זו</div>';
-    const copyBtn = showCopy ? `<button class="st-copy-btn" onclick="stCopyList('${setKey}')">📋 העתק הכל (${items.length})</button>` : '';
+    const copyBtn   = showCopy ? `<button class="st-copy-btn" onclick="stCopyList('${setKey}')">📋 העתק הכל (${items.length})</button>` : '';
+    const markBtn   = `<button class="st-copy-btn" style="background:rgba(16,185,129,0.12);color:#10b981;border-color:rgba(16,185,129,0.3)" onclick="stMarkSelected()">✓ סמן נבחרים כטופלו</button>`;
+    const markAllBtn= `<button class="st-copy-btn" style="background:rgba(16,185,129,0.08);color:#6ee7b7;border-color:rgba(16,185,129,0.2)" onclick="stMarkAll('${setKey}')">✓✓ סמן הכל כטופלו</button>`;
     return `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span style="font-size:13px;color:var(--muted)">${items.length} ביטויים</span>${copyBtn}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <span style="font-size:13px;color:var(--muted)">${items.length} ביטויים</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${copyBtn}${markBtn}${markAllBtn}</div>
       </div>
       <div style="overflow-x:auto"><table class="st-table">
         <thead><tr>
+          <th style="width:28px"><input type="checkbox" style="cursor:pointer" onchange="document.querySelectorAll('.st-row-cb-${setKey}').forEach(c=>c.checked=this.checked)" title="בחר הכל"></th>
           <th>ביטוי חיפוש</th><th>➕ לשלול</th>${showCamp?'<th>קמפיין</th>':''}<th>Match</th><th>חשיפות</th><th>הקלקות</th><th>עלות</th><th>המרות</th><th>סיבה</th>
         </tr></thead>
         <tbody>
           ${items.map(r => `<tr>
+            <td><input type="checkbox" class="st-row-cb st-row-cb-${setKey}" data-term="${(r.term||'').replace(/"/g,'&quot;')}" style="cursor:pointer"></td>
             <td class="st-term">${r.term||''}</td>
             <td style="white-space:nowrap">${r.negKw ? `<code style="background:rgba(239,68,68,0.12);color:#f87171;border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer;border:1px solid rgba(239,68,68,0.25)" onclick="navigator.clipboard.writeText(${JSON.stringify(r.negKw||'').replace(/"/g,'&quot;')});showToast('הועתק ✓')" title="לחץ להעתקה">${r.negKw||''}</code>` : ''}</td>
             ${showCamp?`<td style="font-size:11px;color:var(--muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.campaign_name||''}</td>`:''}
@@ -3320,8 +3348,30 @@ function stRender(allRows, activeCamp) {
       </table></div>`;
   }
 
+  // ── Quick negatives list for the recs tab ──
+  const negKwList = [...new Set(recs.map(r=>r.negKw).filter(Boolean))];
+  const recsHtml = `
+    <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:13px;font-weight:700;color:#f87171">🚫 ${negKwList.length} ביטויים לשלילה</span>
+        <button class="st-copy-btn" style="background:rgba(239,68,68,0.15);color:#f87171;border-color:rgba(239,68,68,0.3)"
+          onclick="navigator.clipboard.writeText(${JSON.stringify(negKwList.join('\n')).replace(/"/g,'&quot;')});showToast('הועתק ${negKwList.length} ביטויים ✓')">
+          📋 העתק רשימה לגוגל
+        </button>
+      </div>
+      <div style="font-family:monospace;font-size:12px;color:#fca5a5;line-height:1.9;columns:2;column-gap:20px">
+        ${negKwList.map(k=>`<div>${k}</div>`).join('')}
+      </div>
+    </div>
+    ${termTable(recs, 'recs', false)}`;
+
+  const dismissedCount = stDismissed.size;
+  const dismissedNote  = dismissedCount > 0
+    ? `<span style="font-size:11px;color:var(--muted);margin-right:8px">🗂 ${dismissedCount} טופלו</span><button class="st-copy-btn" style="font-size:10px;padding:3px 8px" onclick="stResetDismissed()">אפס</button>`
+    : '';
+
   const tabs = [
-    { id:'recs',       label:`🎯 המלצות לשלילה (${recs.length})`,  html: termTable(recs,         'recs',        true)  },
+    { id:'recs',       label:`🎯 המלצות לשלילה (${recs.length}) ${dismissedCount?'· '+dismissedCount+' טופלו':''}`, html: recsHtml },
     { id:'converting', label:`✅ ממירים (${converting.length})`,    html: termTable(converting,   'converting',  false) },
     { id:'waste',      label:`💸 בזבוז >$100 (${clicksNoConv.length})`, html: termTable(clicksNoConv, 'clicksNoConv',true)  },
     { id:'lowctr',     label:`📉 CTR נמוך 20+ חשיפות (${lowCtr.length})`, html: termTable(lowCtr, 'lowCtr', true) },
@@ -3339,6 +3389,7 @@ function stRender(allRows, activeCamp) {
       <div class="kpi-card"><div class="kpi-label">המרות</div><div class="kpi-val" style="color:var(--green)">${totalConv.toFixed(0)}</div><div class="kpi-sub">מ-${converting.length} ביטויים</div></div>
       <div class="kpi-card"><div class="kpi-label">בזבוז (ללא המרה)</div><div class="kpi-val" style="color:var(--red)">$${wastedSpend.toFixed(0)}</div><div class="kpi-sub">${totalSpend>0?Math.round(wastedSpend/totalSpend*100):0}% מהתקציב</div></div>
       <div class="kpi-card"><div class="kpi-label">🚫 לשלילה</div><div class="kpi-val" style="color:var(--yellow)">${recs.length}</div><div class="kpi-sub">המלצות אוטומטיות</div></div>
+      ${dismissedCount>0?`<div class="kpi-card" style="cursor:pointer" onclick="stResetDismissed()"><div class="kpi-label">✅ טופלו</div><div class="kpi-val" style="color:var(--green)">${dismissedCount}</div><div class="kpi-sub">לחץ לאיפוס</div></div>`:''}
     </div>
     <div class="st-subtabs">
       ${tabs.map((t,i) => `<button class="st-subtab${i===0?' active':''}" data-stab="${t.id}" onclick="stSwitchTab('${t.id}')">${t.label}</button>`).join('')}
