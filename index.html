@@ -3037,14 +3037,14 @@ const FL_SERVICE_CITIES = [
 // ══════════════════════════════════════════════════════════════════════
 const ST_PROFILES = {
   aero_duct: {
-    // ⛔ blacklist = ביטויים שתמיד לשלול (מוצרים, כלים, מתחרים)
-    blacklist:      ['lint eater','for drill',' rv ','rv duct','heat duct','savannah','miami','gainesville'],
-    service_cities: FL_SERVICE_CITIES,
+    // ⛔ blacklist = ביטויים שתמיד לשלול (מיקומים מחוץ לאזור, מוצרים, כלים)
+    blacklist:      ['lint eater','for drill','daytona','savannah','miami','gainesville','ocala',' rv ','rv duct','heat duct'],
+    service_cities: [],   // ריק = ללא פילטר מדינות (רק blacklist פעיל)
     hi_impr: 100, pain_cost: 50, pain_clicks: 5
   },
   the_ductors: {
     blacklist:      [],
-    service_cities: FL_SERVICE_CITIES,
+    service_cities: FL_SERVICE_CITIES,  // 📍 רשימת ערי השירות המלאה למעלה
     hi_impr: 150, pain_cost: 120, pain_clicks: 7
   },
   generic: {
