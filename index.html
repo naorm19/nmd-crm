@@ -3026,7 +3026,7 @@ function showSearchTermsTab() {
             ${ST_ACCOUNTS.map(a => `<option value="${a.id}" data-profile="${a.profile}">${a.name}</option>`).join('')}
           </select>
           <div class="st-day-group">
-            ${[7,14,30,60,90].map(d => `<button class="st-day-btn${d===30?' active':''}" data-days="${d}">${d}d</button>`).join('')}
+            ${[{d:1,l:'יום'},{d:3,l:'3 ימים'},{d:7,l:'שבוע'},{d:30,l:'חודש'},{d:60,l:'60 יום'}].map(({d,l}) => `<button class="st-day-btn${d===7?' active':''}" data-days="${d}">${l}</button>`).join('')}
           </div>
           <button class="st-load-btn" id="st-load-btn" onclick="stLoadData()">⚡ טען</button>
         </div>
@@ -3170,7 +3170,19 @@ function stAnalyze(rows, profileKey) {
       }
     }
 
-    if (cat) recs.push({ ...row, cat, mt, reason, intentScore });
+    if (cat) {
+      // ── Compute the specific negative keyword to add ──────────
+      // For geo/diy/product/jobs: the triggering phrase (e.g. "daytona", "coupon")
+      // For budget_bleeder/hi_imp: the full term (phrase or exact)
+      let negKw = '';
+      const quotedMatch = reason?.match(/"([^"]+)"/)?.[1]?.trim();
+      if ((cat === 'geo' || cat === 'diy') && quotedMatch) {
+        negKw = `"${quotedMatch}"`;
+      } else {
+        negKw = mt === 'exact' ? `[${row.term}]` : `"${row.term}"`;
+      }
+      recs.push({ ...row, cat, mt, reason, intentScore, negKw });
+    }
   }
 
   const pri = { budget_bleeder:4, geo:3, diy:2, hi_imp:1 };
@@ -3180,7 +3192,7 @@ function stAnalyze(rows, profileKey) {
 function stCopyList(setKey) {
   const items = stLastSets[setKey];
   if (!items?.length) return;
-  const lines = items.map(r => r.mt === 'exact' ? `[${r.term}]` : `"${r.term}"`);
+  const lines = items.map(r => r.negKw || (r.mt === 'exact' ? `[${r.term}]` : `"${r.term}"`));
   navigator.clipboard.writeText(lines.join('\n'));
   showToast(`הועתק ${lines.length} ביטויים ✓`);
 }
@@ -3227,11 +3239,12 @@ function stRender(allRows, activeCamp) {
       </div>
       <div style="overflow-x:auto"><table class="st-table">
         <thead><tr>
-          <th>ביטוי חיפוש</th>${showCamp?'<th>קמפיין</th>':''}<th>Match</th><th>חשיפות</th><th>הקלקות</th><th>עלות</th><th>המרות</th><th>סיבה</th>
+          <th>ביטוי חיפוש</th><th>➕ לשלול</th>${showCamp?'<th>קמפיין</th>':''}<th>Match</th><th>חשיפות</th><th>הקלקות</th><th>עלות</th><th>המרות</th><th>סיבה</th>
         </tr></thead>
         <tbody>
           ${items.map(r => `<tr>
             <td class="st-term">${r.term||''}</td>
+            <td style="white-space:nowrap">${r.negKw ? `<code style="background:rgba(239,68,68,0.12);color:#f87171;border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer;border:1px solid rgba(239,68,68,0.25)" onclick="navigator.clipboard.writeText(${JSON.stringify(r.negKw||'').replace(/"/g,'&quot;')});showToast('הועתק ✓')" title="לחץ להעתקה">${r.negKw||''}</code>` : ''}</td>
             ${showCamp?`<td style="font-size:11px;color:var(--muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.campaign_name||''}</td>`:''}
             <td><span class="st-mt-badge">${(r.match_type||'').replace('_',' ').toLowerCase()}</span></td>
             <td>${(r.impressions||0).toLocaleString()}</td>
