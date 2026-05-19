@@ -3262,6 +3262,15 @@ function stAnalyze(rows, profileKey) {
       const quotedMatch = reason?.match(/"([^"]+)"/)?.[1]?.trim();
       if ((cat === 'geo' || cat === 'diy') && quotedMatch) {
         negKw = `"${quotedMatch}"`;
+      } else if (cat === 'geo' && reason?.startsWith('מדינה לא מורשית:')) {
+        // Extract city+state from end of term: "air duct cleaning kennesaw ga" → "kennesaw ga"
+        const GEO_SERVICE_WORDS = new Set(['cleaning','service','company','near','duct','dryer','air','vent','repair','and','the','for','of','a','my']);
+        const tWords = row.term.trim().split(/\s+/);
+        const stateWord = tWords[tWords.length - 1] || '';
+        const cityWord  = tWords[tWords.length - 2] || '';
+        negKw = (cityWord && !GEO_SERVICE_WORDS.has(cityWord.toLowerCase()))
+          ? `"${cityWord} ${stateWord}"`
+          : `"${stateWord}"`;
       } else {
         negKw = mt === 'exact' ? `[${row.term}]` : `"${row.term}"`;
       }
@@ -3279,6 +3288,20 @@ function stCopyList(setKey) {
   const lines = items.map(r => r.negKw || (r.mt === 'exact' ? `[${r.term}]` : `"${r.term}"`));
   navigator.clipboard.writeText(lines.join('\n'));
   showToast(`הועתק ${lines.length} ביטויים ✓`);
+}
+function stCopyTerms(setKey) {
+  const items = stLastSets[setKey];
+  if (!items?.length) return;
+  const lines = items.map(r => r.term).filter(Boolean);
+  navigator.clipboard.writeText(lines.join('\n'));
+  showToast(`הועתק ${lines.length} ביטויי חיפוש ✓`);
+}
+function stCopyNegKws(setKey) {
+  const items = stLastSets[setKey];
+  if (!items?.length) return;
+  const lines = items.map(r => r.negKw || (r.mt === 'exact' ? `[${r.term}]` : `"${r.term}"`)).filter(Boolean);
+  navigator.clipboard.writeText(lines.join('\n'));
+  showToast(`הועתק ${lines.length} ביטויים לשלילה ✓`);
 }
 
 function stApplyFilter(camp) {
@@ -3329,7 +3352,9 @@ function stRender(allRows, activeCamp) {
       <div style="overflow-x:auto"><table class="st-table">
         <thead><tr>
           <th style="width:28px"><input type="checkbox" style="cursor:pointer" onchange="document.querySelectorAll('.st-row-cb-${setKey}').forEach(c=>c.checked=this.checked)" title="בחר הכל"></th>
-          <th>ביטוי חיפוש</th><th>➕ לשלול</th>${showCamp?'<th>קמפיין</th>':''}<th>Match</th><th>חשיפות</th><th>הקלקות</th><th>עלות</th><th>המרות</th><th>סיבה</th>
+          <th><div style="display:flex;flex-direction:column;gap:4px"><button class="st-copy-btn" style="font-size:10px;padding:2px 8px;width:fit-content" onclick="stCopyTerms('${setKey}')">📋 העתק</button><span>ביטוי חיפוש</span></div></th>
+          <th><div style="display:flex;flex-direction:column;gap:4px"><button class="st-copy-btn" style="font-size:10px;padding:2px 8px;width:fit-content" onclick="stCopyNegKws('${setKey}')">📋 העתק</button><span>➕ לשלול</span></div></th>
+          ${showCamp?'<th>קמפיין</th>':''}<th>Match</th><th>חשיפות</th><th>הקלקות</th><th>עלות</th><th>המרות</th><th>סיבה</th>
         </tr></thead>
         <tbody>
           ${items.map(r => `<tr>
@@ -3348,22 +3373,7 @@ function stRender(allRows, activeCamp) {
       </table></div>`;
   }
 
-  // ── Quick negatives list for the recs tab ──
-  const negKwList = [...new Set(recs.map(r=>r.negKw).filter(Boolean))];
-  const recsHtml = `
-    <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:14px 16px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span style="font-size:13px;font-weight:700;color:#f87171">🚫 ${negKwList.length} ביטויים לשלילה</span>
-        <button class="st-copy-btn" style="background:rgba(239,68,68,0.15);color:#f87171;border-color:rgba(239,68,68,0.3)"
-          onclick="navigator.clipboard.writeText(${JSON.stringify(negKwList.join('\n')).replace(/"/g,'&quot;')});showToast('הועתק ${negKwList.length} ביטויים ✓')">
-          📋 העתק רשימה לגוגל
-        </button>
-      </div>
-      <div style="font-family:monospace;font-size:12px;color:#fca5a5;line-height:1.9;columns:2;column-gap:20px">
-        ${negKwList.map(k=>`<div>${k}</div>`).join('')}
-      </div>
-    </div>
-    ${termTable(recs, 'recs', false)}`;
+  const recsHtml = termTable(recs, 'recs', false);
 
   const dismissedCount = stDismissed.size;
   const dismissedNote  = dismissedCount > 0
