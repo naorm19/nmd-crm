@@ -3285,11 +3285,10 @@ function stRender(allRows, activeCamp) {
   const totalImpr    = rows.reduce((s,r) => s+r.impressions, 0);
   const avgCtr       = totalImpr > 0 ? (totalClicks/totalImpr*100) : 0;
   const wastedSpend  = rows.filter(r => r.conversions===0 && !(r.match_type||'').toUpperCase().includes('EXACT')).reduce((s,r) => s+r.cost, 0);
-  const irrelevant   = rows.filter(r => r.conversions===0 && r.clicks===0 && r.impressions>0);
   const converting   = rows.filter(r => r.conversions>0).sort((a,b) => b.conversions-a.conversions);
-  const clicksNoConv = rows.filter(r => r.clicks>0 && r.conversions===0 && !(r.match_type||'').toUpperCase().includes('EXACT')).sort((a,b) => b.cost-a.cost);
-  const lowCtr       = rows.filter(r => r.impressions>=cfg.hi_impr && r.clicks>0 && r.ctr<0.02);
-  stLastSets = { recs, irrelevant, converting, clicksNoConv, lowCtr };
+  const clicksNoConv = rows.filter(r => r.clicks>0 && r.conversions===0 && r.cost>=100 && !(r.match_type||'').toUpperCase().includes('EXACT')).sort((a,b) => b.cost-a.cost);
+  const lowCtr       = rows.filter(r => r.impressions>=20 && r.clicks===0).sort((a,b) => b.impressions-a.impressions);
+  stLastSets = { recs, converting, clicksNoConv, lowCtr };
 
   const catLabels = { budget_bleeder:'💸 בזבוז', geo:'📍 גיאו', diy:'🔧 DIY', hi_imp:'📉 Hi-Imp' };
   const catColors = { budget_bleeder:'#ef4444', geo:'#f59e0b', diy:'#8b5cf6', hi_imp:'#64748b' };
@@ -3322,11 +3321,10 @@ function stRender(allRows, activeCamp) {
   }
 
   const tabs = [
-    { id:'recs',       label:`🎯 המלצות לשלילה (${recs.length})`,     html: termTable(recs,         'recs',        true)  },
-    { id:'irrelevant', label:`❌ לא רלוונטיים (${irrelevant.length})`, html: termTable(irrelevant,   'irrelevant',  true)  },
-    { id:'converting', label:`✅ ממירים (${converting.length})`,       html: termTable(converting,   'converting',  false) },
-    { id:'waste',      label:`💸 בזבוז (${clicksNoConv.length})`,      html: termTable(clicksNoConv, 'clicksNoConv',true)  },
-    { id:'lowctr',     label:`📉 CTR נמוך (${lowCtr.length})`,         html: termTable(lowCtr,       'lowCtr',      true)  },
+    { id:'recs',       label:`🎯 המלצות לשלילה (${recs.length})`,  html: termTable(recs,         'recs',        true)  },
+    { id:'converting', label:`✅ ממירים (${converting.length})`,    html: termTable(converting,   'converting',  false) },
+    { id:'waste',      label:`💸 בזבוז >$100 (${clicksNoConv.length})`, html: termTable(clicksNoConv, 'clicksNoConv',true)  },
+    { id:'lowctr',     label:`📉 CTR נמוך 20+ חשיפות (${lowCtr.length})`, html: termTable(lowCtr, 'lowCtr', true) },
   ];
 
   content.innerHTML = `
