@@ -1809,42 +1809,50 @@ function _drawMakorByPeriod() {
 
 function updateMakorKpis(rows) {
   if (!rows?.length) return;
-  // Use last complete month (second to last, as last is current partial month)
   const ref = rows.length >= 2 ? rows[rows.length - 2] : rows[rows.length - 1];
-  let val1, val2, label1;
-  if (makorChartFilter === 'new') {
-    val1   = (ref.count || 0).toLocaleString();
-    val2   = '₪' + Math.round(ref.revenue || 0).toLocaleString();
-    label1 = 'לקוחות חדשים';
-  } else if (makorChartFilter === 'existing') {
-    val1   = (ref.existing_orders || 0).toLocaleString();
-    val2   = '₪' + Math.round(ref.existing_revenue || 0).toLocaleString();
-    label1 = 'הזמנות קיימים';
-  } else {
-    val1   = (ref.total_orders || 0).toLocaleString();
-    val2   = '₪' + Math.round(ref.total_revenue || 0).toLocaleString();
-    label1 = 'סה"כ הזמנות';
-  }
-  const totalOrders = makorChartFilter === 'new'
-    ? (ref.count || 0)
-    : makorChartFilter === 'existing'
-      ? (ref.existing_orders || 0)
-      : (ref.total_orders || 0);
-  const totalRev = makorChartFilter === 'new'
-    ? (ref.revenue || 0)
-    : makorChartFilter === 'existing'
-      ? (ref.existing_revenue || 0)
-      : (ref.total_revenue || 0);
-  const avg = totalOrders > 0 ? Math.round(totalRev / totalOrders) : 0;
 
   const el1 = document.getElementById('makor-kpi-label-1');
+  const el2 = document.getElementById('makor-kpi-label-2');
   const ev1 = document.getElementById('makor-kpi-val-1');
   const ev2 = document.getElementById('makor-kpi-val-2');
   const ev3 = document.getElementById('makor-kpi-val-3');
-  if (el1) el1.textContent = label1 + ' (חודש שעבר)';
-  if (ev1) ev1.textContent = val1;
-  if (ev2) ev2.textContent = val2;
-  if (ev3) ev3.textContent = '₪' + avg.toLocaleString();
+
+  // Color dots for KPI cards in 'all' mode
+  const card1 = ev1?.parentElement;
+  const card2 = ev2?.parentElement;
+  if (card1) card1.style.borderTop = makorChartFilter === 'all'      ? '3px solid #10b981'
+                                   : makorChartFilter === 'new'      ? '3px solid #10b981'
+                                   : makorChartFilter === 'existing' ? '3px solid #f59e0b'
+                                   : '1px solid var(--border)';
+  if (card2) card2.style.borderTop = makorChartFilter === 'all'      ? '3px solid #f59e0b'
+                                   : '1px solid var(--border)';
+
+  if (makorChartFilter === 'new') {
+    const newOrders = (ref.count||0) || Math.max(0,(ref.total_orders||0)-(ref.existing_orders||0));
+    const newRev    = (ref.revenue||0) || Math.max(0,(ref.total_revenue||0)-(ref.existing_revenue||0));
+    if (el1) el1.textContent = 'הזמנות חדשים (חודש שעבר)';
+    if (el2) el2.textContent = 'הכנסות חדשים';
+    if (ev1) ev1.textContent = newOrders.toLocaleString();
+    if (ev2) ev2.textContent = '₪' + Math.round(newRev).toLocaleString();
+    const avg = newOrders > 0 ? Math.round(newRev / newOrders) : 0;
+    if (ev3) ev3.textContent = '₪' + avg.toLocaleString();
+  } else if (makorChartFilter === 'existing') {
+    if (el1) el1.textContent = 'הזמנות קיימים (חודש שעבר)';
+    if (el2) el2.textContent = 'הכנסות קיימים';
+    if (ev1) ev1.textContent = (ref.existing_orders || 0).toLocaleString();
+    if (ev2) ev2.textContent = '₪' + Math.round(ref.existing_revenue || 0).toLocaleString();
+    const avg = (ref.existing_orders||0) > 0 ? Math.round((ref.existing_revenue||0) / (ref.existing_orders||0)) : 0;
+    if (ev3) ev3.textContent = '₪' + avg.toLocaleString();
+  } else {
+    // 'all' — show new vs existing split
+    const newOrders = Math.max(0, (ref.total_orders||0) - (ref.existing_orders||0));
+    if (el1) el1.textContent = '🟢 חדשים (חודש שעבר)';
+    if (el2) el2.textContent = '🟡 הזמנות קיימים';
+    if (ev1) ev1.textContent = newOrders.toLocaleString();
+    if (ev2) ev2.textContent = (ref.existing_orders || 0).toLocaleString();
+    const avg = (ref.total_orders||0) > 0 ? Math.round((ref.total_revenue||0) / (ref.total_orders||0)) : 0;
+    if (ev3) ev3.textContent = '₪' + avg.toLocaleString();
+  }
 }
 
 function drawMakorChart(rows, periodOverride) {
@@ -1859,57 +1867,120 @@ function drawMakorChart(rows, periodOverride) {
   });
 
   const isLast = i => i === rows.length - 1;
-  const cfg = {
-    new:      { counts: rows.map(r=>r.count||0),           revenues: rows.map(r=>r.revenue||0),          barC:'#10b981', barCA:'rgba(16,185,129,', lineC:'#34d399', countLabel:'לקוחות חדשים'  },
-    existing: { counts: rows.map(r=>r.existing_orders||0), revenues: rows.map(r=>r.existing_revenue||0), barC:'#f59e0b', barCA:'rgba(245,158,11,',  lineC:'#fbbf24', countLabel:'הזמנות קיימים' },
-    all:      { counts: rows.map(r=>r.total_orders||0),    revenues: rows.map(r=>r.total_revenue||0),    barC:'#6366f1', barCA:'rgba(99,102,241,',  lineC:'#818cf8', countLabel:'סה"כ הזמנות'   }
-  }[makorChartFilter];
-
-  const { counts, revenues, barC, barCA, lineC, countLabel } = cfg;
-
   const ctx = document.getElementById('makor-nc-chart')?.getContext('2d');
   if (!ctx) return;
   if (makorNcChart) { makorNcChart.destroy(); makorNcChart = null; }
 
-  // Gradient for bars
-  const barColors = counts.map((_, i) => isLast(i) ? 'rgba(148,163,184,0.25)' : barCA + '0.75)');
-  const barBorders = counts.map((_, i) => isLast(i) ? 'rgba(148,163,184,0.5)' : barC);
+  let datasets, stacked = false;
+
+  if (makorChartFilter === 'all') {
+    // ── Stacked bar: חדשים (ירוק) + קיימים (צהוב-כתום) + קו הכנסות ────
+    stacked = true;
+    const newCounts  = rows.map(r => Math.max(0, (r.total_orders||0) - (r.existing_orders||0)));
+    const existCount = rows.map(r => r.existing_orders || 0);
+    const revenues   = rows.map(r => r.total_revenue || 0);
+
+    datasets = [
+      {
+        label: 'לקוחות קיימים',
+        data: existCount,
+        backgroundColor: existCount.map((_, i) => isLast(i) ? 'rgba(245,158,11,0.2)' : 'rgba(245,158,11,0.72)'),
+        borderColor: 'transparent',
+        borderWidth: 0,
+        borderRadius: { bottomLeft: 7, bottomRight: 7, topLeft: 0, topRight: 0 },
+        borderSkipped: 'bottom',
+        yAxisID: 'yCount',
+        stack: 'main',
+        order: 3
+      },
+      {
+        label: 'לקוחות חדשים',
+        data: newCounts,
+        backgroundColor: newCounts.map((_, i) => isLast(i) ? 'rgba(16,185,129,0.2)' : 'rgba(16,185,129,0.8)'),
+        borderColor: 'transparent',
+        borderWidth: 0,
+        borderRadius: { topLeft: 7, topRight: 7, bottomLeft: 0, bottomRight: 0 },
+        borderSkipped: 'bottom',
+        yAxisID: 'yCount',
+        stack: 'main',
+        order: 3
+      },
+      {
+        label: 'הכנסות כולל (₪)',
+        data: revenues,
+        type: 'line',
+        borderColor: '#818cf8',
+        backgroundColor: 'transparent',
+        pointBackgroundColor: revenues.map((_, i) => isLast(i) ? 'rgba(148,163,184,0.6)' : '#818cf8'),
+        pointBorderColor: '#1e293b',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        tension: 0.4,
+        fill: false,
+        borderWidth: 2.5,
+        yAxisID: 'yRevenue',
+        order: 1
+      }
+    ];
+  } else {
+    // ── Single bar: new or existing ──────────────────────────────────────
+    const cfg = {
+      new:      {
+        // fallback: if count=0 use total-existing (older months don't have count)
+        counts:   rows.map(r => (r.count||0) || Math.max(0,(r.total_orders||0)-(r.existing_orders||0))),
+        revenues: rows.map(r => (r.revenue||0) || Math.max(0,(r.total_revenue||0)-(r.existing_revenue||0))),
+        barC:'#10b981', barCA:'rgba(16,185,129,', lineC:'#34d399', countLabel:'לקוחות חדשים'
+      },
+      existing: { counts: rows.map(r=>r.existing_orders||0), revenues: rows.map(r=>r.existing_revenue||0), barC:'#f59e0b', barCA:'rgba(245,158,11,',  lineC:'#fbbf24', countLabel:'הזמנות קיימים' },
+    }[makorChartFilter];
+    const { counts, revenues, barC, barCA, lineC, countLabel } = cfg;
+    datasets = [
+      {
+        label: countLabel,
+        data: counts,
+        backgroundColor: counts.map((_, i) => isLast(i) ? 'rgba(148,163,184,0.25)' : barCA + '0.75)'),
+        borderColor: 'transparent',
+        borderWidth: 0,
+        borderRadius: 7,
+        borderSkipped: false,
+        yAxisID: 'yCount',
+        order: 2
+      },
+      {
+        label: 'שווי הזמנות (₪)',
+        data: revenues,
+        type: 'line',
+        borderColor: lineC,
+        backgroundColor: 'transparent',
+        pointBackgroundColor: revenues.map((_, i) => isLast(i) ? 'rgba(148,163,184,0.6)' : lineC),
+        pointBorderColor: '#1e293b',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        tension: 0.4,
+        fill: false,
+        borderWidth: 2.5,
+        yAxisID: 'yRevenue',
+        order: 1
+      }
+    ];
+  }
+
+  const commonTooltipStyle = {
+    backgroundColor: '#1e293b',
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    padding: 12,
+    titleColor: '#94a3b8',
+    bodyColor: '#f1f5f9',
+    titleFont: { family:'Heebo', size:11 },
+    bodyFont: { family:'Heebo', size:13, weight:'600' }
+  };
 
   makorNcChart = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: countLabel,
-          data: counts,
-          backgroundColor: barColors,
-          borderColor: barBorders,
-          borderWidth: 0,
-          borderRadius: 8,
-          borderSkipped: false,
-          yAxisID: 'yCount',
-          order: 2
-        },
-        {
-          label: 'שווי הזמנות (₪)',
-          data: revenues,
-          type: 'line',
-          borderColor: lineC,
-          backgroundColor: 'transparent',
-          pointBackgroundColor: revenues.map((_, i) => isLast(i) ? 'rgba(148,163,184,0.6)' : lineC),
-          pointBorderColor: '#1e293b',
-          pointBorderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          tension: 0.4,
-          fill: false,
-          borderWidth: 2.5,
-          yAxisID: 'yRevenue',
-          order: 1
-        }
-      ]
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
@@ -1922,37 +1993,42 @@ function drawMakorChart(rows, periodOverride) {
             font: { family:'Heebo', size:11 },
             boxWidth: 10, boxHeight: 10,
             padding: 16,
-            usePointStyle: true
+            usePointStyle: true,
+            filter: item => item.text !== 'הכנסות כולל (₪)' || true
           }
         },
         tooltip: {
-          backgroundColor: '#1e293b',
-          borderColor: 'rgba(255,255,255,0.08)',
-          borderWidth: 1,
-          padding: 12,
-          titleColor: '#94a3b8',
-          bodyColor: '#f1f5f9',
-          titleFont: { family:'Heebo', size:11 },
-          bodyFont: { family:'Heebo', size:13, weight:'600' },
+          ...commonTooltipStyle,
           callbacks: {
             title: items => items[0].label,
             label: item => {
-              if (item.dataset.yAxisID === 'yRevenue') {
+              if (item.dataset.yAxisID === 'yRevenue')
                 return '  💰 ₪' + Math.round(item.parsed.y).toLocaleString();
-              }
+              if (item.dataset.label === 'לקוחות חדשים')
+                return '  🟢 חדשים: ' + item.parsed.y.toLocaleString();
+              if (item.dataset.label === 'לקוחות קיימים')
+                return '  🟡 קיימים: ' + item.parsed.y.toLocaleString();
               const suffix = makorChartFilter === 'new' ? ' לקוחות' : ' הזמנות';
               return '  📦 ' + item.parsed.y.toLocaleString() + suffix;
+            },
+            footer: items => {
+              if (makorChartFilter !== 'all') return;
+              const total = items.filter(i => i.dataset.yAxisID === 'yCount')
+                                 .reduce((s, i) => s + (i.parsed.y || 0), 0);
+              return 'סה"כ: ' + total.toLocaleString() + ' הזמנות';
             }
           }
         }
       },
       scales: {
         x: {
+          stacked,
           ticks: { color:'#475569', font:{ family:'Heebo', size:11 } },
           grid: { display:false },
           border: { display:false }
         },
         yCount: {
+          stacked,
           position: 'right',
           ticks: { color:'#475569', font:{ family:'Heebo', size:10 }, maxTicksLimit:5 },
           grid: { color:'rgba(255,255,255,0.04)', drawBorder:false },
@@ -1988,8 +2064,8 @@ async function renderMakorMonthlyChart(clientId, from, to) {
     `?client_id=eq.${clientId}&order=date.desc&limit=120&select=date,count,revenue,total_orders,total_revenue,existing_orders,existing_revenue`);
   if (!allRows?.length) return;
 
-  // ── חודשי: רק ראשי חודש, 6 חודשים אחרונים ────────────────
-  const monthlyRows = allRows.filter(r => r.date && r.date.endsWith('-01')).slice(0, 6);
+  // ── חודשי: רק ראשי חודש, 18 חודשים אחרונים ────────────────
+  const monthlyRows = allRows.filter(r => r.date && r.date.endsWith('-01')).slice(0, 18);
   monthlyRows.reverse();
 
   // ── יומי: כל הרשומות הלא-חודשיות בטווח ──────────────────
