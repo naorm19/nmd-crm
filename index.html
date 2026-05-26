@@ -1022,9 +1022,18 @@ async function showClient(clientId, dateMode) {
             <button id="makor-filter-all"      onclick="setMakorFilter('all')"      style="padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;font-family:'Heebo';cursor:pointer;border:none;background:transparent;color:var(--muted2);transition:all 0.2s;">הכל</button>
           </div>
           <!-- Period toggle -->
-          <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;">
-            <button id="makor-period-daily"   onclick="setMakorPeriod('daily')"   style="padding:4px 12px;font-size:11px;font-family:'Heebo';border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s;">יומי</button>
-            <button id="makor-period-monthly" onclick="setMakorPeriod('monthly')" style="padding:4px 12px;font-size:11px;font-family:'Heebo';border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#10b981;color:#fff;transition:all 0.2s;">חודשי</button>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;">
+              <button id="makor-period-daily"   onclick="setMakorPeriod('daily')"   style="padding:4px 12px;font-size:11px;font-family:'Heebo';border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s;">יומי</button>
+              <button id="makor-period-monthly" onclick="setMakorPeriod('monthly')" style="padding:4px 12px;font-size:11px;font-family:'Heebo';border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#10b981;color:#fff;transition:all 0.2s;">חודשי</button>
+            </div>
+            <!-- Time range filter -->
+            <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;" id="makor-time-btns">
+              <button id="makor-time-3"  onclick="setMakorTime(3)"  style="padding:4px 10px;font-size:11px;font-family:'Heebo';border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s;">3M</button>
+              <button id="makor-time-6"  onclick="setMakorTime(6)"  style="padding:4px 10px;font-size:11px;font-family:'Heebo';border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s;">6M</button>
+              <button id="makor-time-12" onclick="setMakorTime(12)" style="padding:4px 10px;font-size:11px;font-family:'Heebo';border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s;">שנה</button>
+              <button id="makor-time-0"  onclick="setMakorTime(0)"  style="padding:4px 10px;font-size:11px;font-family:'Heebo';border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#10b981;color:#fff;transition:all 0.2s;">הכל</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1048,6 +1057,18 @@ async function showClient(clientId, dateMode) {
       <!-- Chart -->
       <div style="position:relative;">
         <canvas id="makor-nc-chart"></canvas>
+      </div>
+
+      <!-- City pie chart (מוצג כשיש נתוני ערים) -->
+      <div id="makor-city-section" style="margin-top:28px;display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text);">📍 פיזור לפי ערים</div>
+          <div style="font-size:11px;color:var(--muted);" id="makor-city-period-label"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:center;">
+          <div style="position:relative;max-width:260px;margin:0 auto;"><canvas id="makor-city-chart"></canvas></div>
+          <div id="makor-city-legend" style="display:flex;flex-direction:column;gap:8px;"></div>
+        </div>
       </div>
     </div>`:''}
     ${c.business_name!=='מקור השפע'?`<div class="chart-card">
@@ -1768,6 +1789,20 @@ async function loadNewCustomersInline(clientId, from, to) {
 let makorNcChart = null;
 
 let makorChartFilter = 'new'; // 'new' | 'existing' | 'all'
+let makorTimeRange   = 0;     // 0=הכל | 3 | 6 | 12
+
+function setMakorTime(months) {
+  makorTimeRange = months;
+  [3,6,12,0].forEach(m => {
+    const btn = document.getElementById(`makor-time-${m}`);
+    if (!btn) return;
+    const active = m === months;
+    btn.style.background = active ? '#10b981' : 'transparent';
+    btn.style.color      = active ? '#fff'    : 'var(--muted2)';
+  });
+  if (makorChartPeriod === 'monthly') _drawMakorByPeriod();
+  renderMakorCityChart(months);
+}
 let makorChartRows       = null;  // monthly rows (YYYY-MM-01)
 let makorChartDailyRows  = null;  // daily rows
 let makorChartClientId   = null;
@@ -1803,7 +1838,10 @@ function _drawMakorByPeriod() {
   if (makorChartPeriod === 'daily' && makorChartDailyRows?.length) {
     drawMakorChart(makorChartDailyRows, 'daily');
   } else if (makorChartRows?.length) {
-    drawMakorChart(makorChartRows, 'monthly');
+    const rows = (makorTimeRange > 0)
+      ? makorChartRows.slice(-makorTimeRange)
+      : makorChartRows;
+    drawMakorChart(rows, 'monthly');
   }
 }
 
@@ -2052,6 +2090,122 @@ function drawMakorChart(rows, periodOverride) {
   });
 }
 
+// ── City Pie Chart ───────────────────────────────────────────
+let makorCityChart = null;
+const CITY_COLORS = [
+  '#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6',
+  '#a855f7','#14b8a6','#f97316','#ec4899','#84cc16'
+];
+
+async function renderMakorCityChart(monthsBack) {
+  const section = document.getElementById('makor-city-section');
+  if (!section) return;
+
+  // חישוב טווח תאריכים לפי הפילטר
+  const now  = new Date();
+  const pad  = n => String(n).padStart(2,'0');
+  let fromDate;
+  if (!monthsBack || monthsBack === 0) {
+    fromDate = '2024-11-01'; // הכל
+  } else {
+    const d = new Date(now.getFullYear(), now.getMonth() - monthsBack + 1, 1);
+    fromDate = `${d.getFullYear()}-${pad(d.getMonth()+1)}-01`;
+  }
+  const toDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+
+  // שליפה מ-Supabase
+  const rows = await supaFetch('makor_city_stats',
+    `?date=gte.${fromDate}&date=lte.${toDate}&order=date.desc&limit=500`);
+  if (!rows?.length) { section.style.display = 'none'; return; }
+
+  // קיבוץ לפי עיר
+  const cityTotals = {};
+  for (const r of rows) {
+    if (!cityTotals[r.city]) cityTotals[r.city] = { orders: 0, revenue: 0 };
+    cityTotals[r.city].orders  += r.orders_count || 0;
+    cityTotals[r.city].revenue += parseFloat(r.revenue) || 0;
+  }
+
+  // מיון לפי הזמנות, top 9 + אחר
+  const sorted = Object.entries(cityTotals).sort((a,b) => b[1].orders - a[1].orders);
+  const TOP = 9;
+  const top    = sorted.slice(0, TOP);
+  const others = sorted.slice(TOP);
+  const otherOrders  = others.reduce((s,[,v]) => s + v.orders,  0);
+  const otherRevenue = others.reduce((s,[,v]) => s + v.revenue, 0);
+  if (otherOrders > 0) top.push(['אחר', { orders: otherOrders, revenue: otherRevenue }]);
+
+  const total  = top.reduce((s,[,v]) => s + v.orders, 0);
+  const labels = top.map(([c]) => c);
+  const values = top.map(([,v]) => v.orders);
+  const colors = top.map((_,i) => CITY_COLORS[i % CITY_COLORS.length]);
+
+  // עדכון label תקופה
+  const periodEl = document.getElementById('makor-city-period-label');
+  if (periodEl) {
+    const labels3 = ['', '3 חודשים', '6 חודשים', '', '', '', '', '', '', '', '', '', 'שנה'];
+    periodEl.textContent = monthsBack ? (labels3[monthsBack] || `${monthsBack} חודשים`) : 'כל הזמן';
+  }
+
+  // ציור עוגה
+  const ctx = document.getElementById('makor-city-chart')?.getContext('2d');
+  if (!ctx) return;
+  if (makorCityChart) { makorCityChart.destroy(); makorCityChart = null; }
+
+  makorCityChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors,
+        borderColor: '#0f172a',
+        borderWidth: 3,
+        hoverOffset: 8
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: '62%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1e293b',
+          borderColor: 'rgba(255,255,255,0.08)',
+          borderWidth: 1,
+          padding: 10,
+          titleColor: '#94a3b8',
+          bodyColor: '#f1f5f9',
+          titleFont: { family:'Heebo', size:11 },
+          bodyFont: { family:'Heebo', size:13, weight:'600' },
+          callbacks: {
+            label: item => {
+              const pct = Math.round(item.parsed / total * 100);
+              return `  ${item.parsed.toLocaleString()} הזמנות (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // legend מותאמת אישית
+  const legendEl = document.getElementById('makor-city-legend');
+  if (legendEl) {
+    legendEl.innerHTML = top.map(([city, v], i) => {
+      const pct = Math.round(v.orders / total * 100);
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;">
+        <div style="width:10px;height:10px;border-radius:3px;background:${colors[i]};flex-shrink:0;"></div>
+        <span style="color:var(--text);font-weight:600;min-width:90px;">${city}</span>
+        <span style="color:var(--muted);font-size:11px;">${v.orders} הזמנות</span>
+        <span style="color:${colors[i]};font-weight:700;margin-right:auto;">${pct}%</span>
+      </div>`;
+    }).join('');
+  }
+
+  section.style.display = 'block';
+}
+
 async function renderMakorMonthlyChart(clientId, from, to) {
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
@@ -2100,6 +2254,7 @@ async function renderMakorMonthlyChart(clientId, from, to) {
   });
 
   _drawMakorByPeriod();
+  renderMakorCityChart(makorTimeRange);
 }
 
 async function saveNewCustomersInline(clientId) {
