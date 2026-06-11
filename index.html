@@ -339,6 +339,58 @@
   .st-camp-btn.active { background:var(--accent); border-color:var(--accent); color:white; }
   .st-camp-btn.active .st-camp-count { background:rgba(255,255,255,0.25); }
   .st-camp-count { background:var(--surface3); border-radius:10px; padding:1px 7px; font-size:10px; font-weight:700; }
+
+  /* ── Google Ads Dashboard (da-) ── */
+  #da-shell{padding:0 0 48px}
+  .da-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 0 4px;border-bottom:1px solid var(--border);margin-bottom:20px}
+  .da-date-tabs{display:flex;gap:6px}
+  .da-dtab{background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s}
+  .da-dtab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .da-camp-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 12px;font-size:12px;font-family:Heebo,sans-serif;cursor:pointer;min-width:180px}
+  .da-camp-select:disabled{opacity:.5;cursor:default}
+  .da-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
+  .da-sec-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;position:relative}
+  .da-sec-btn.active{background:var(--surface3);border-color:var(--accent);color:var(--text)}
+  .da-sec-btn .da-dot{position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--red);display:none}
+  .da-sec-btn.has-urgent .da-dot{display:block}
+  .da-kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:24px}
+  .da-kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;border-top:3px solid var(--border)}
+  .da-kpi.green{border-top-color:var(--green)}.da-kpi.yellow{border-top-color:var(--yellow)}.da-kpi.red{border-top-color:var(--red)}.da-kpi.blue{border-top-color:var(--accent)}.da-kpi.purple{border-top-color:#8b5cf6}
+  .da-kpi-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+  .da-kpi-val{font-size:26px;font-weight:800;line-height:1}.da-kpi-sub{font-size:11px;color:var(--muted);margin-top:4px}
+  .da-table{width:100%;border-collapse:collapse;font-size:13px}
+  .da-table th{background:var(--surface2);color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;padding:8px 12px;text-align:right;border-bottom:1px solid var(--border)}
+  .da-table td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  .da-table tr:hover td{background:var(--surface2)}
+  .da-tr-good td{border-right:3px solid var(--green)}
+  .da-tr-warn td{border-right:3px solid var(--yellow)}
+  .da-tr-bad  td{border-right:3px solid var(--red)}
+  .da-chip{display:inline-block;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700}
+  .da-chip.good{background:rgba(16,185,129,.15);color:var(--green)}
+  .da-chip.warn{background:rgba(245,158,11,.15);color:var(--yellow)}
+  .da-chip.bad {background:rgba(239,68,68,.15);color:var(--red)}
+  .da-stg-hdr{display:flex;align-items:center;gap:10px;padding:11px 16px;border-radius:10px;cursor:pointer;margin-bottom:6px;font-weight:700;font-size:13px;user-select:none;border:1px solid transparent;transition:background .15s}
+  .da-stg-hdr.critical{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:#fca5a5}
+  .da-stg-hdr.drain{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.3);color:#fcd34d}
+  .da-stg-hdr.ctr0{background:rgba(99,102,241,.12);border-color:rgba(99,102,241,.3);color:#a5b4fc}
+  .da-stg-hdr.conv-good{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.3);color:#6ee7b7}
+  .da-stg-hdr.conv-exp{background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.3);color:#d8b4fe}
+  .da-stg-hdr.watch{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:#93c5fd}
+  .da-stg-body{margin-bottom:16px}
+  .da-urgent-banner{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:12px;padding:18px 20px;margin-bottom:20px}
+  .da-urgent-title{font-size:16px;font-weight:800;color:var(--red);margin-bottom:12px}
+  .da-urgent-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(239,68,68,.15);font-size:13px}
+  .da-urgent-item:last-child{border-bottom:none}
+  .da-ins-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+  @media(max-width:700px){.da-ins-grid{grid-template-columns:1fr}}
+  .da-ins-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px}
+  .da-ins-card-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px}
+  .da-ins-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
+  .da-ins-row:last-child{border-bottom:none}
+  .da-empty{text-align:center;padding:40px;color:var(--muted);font-size:14px}
+  .da-loading{text-align:center;padding:40px;color:var(--muted)}
+  .da-loading-spin{display:inline-block;width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:10px}
+  @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -2050,10 +2102,20 @@ function drawMakorChart(rows, periodOverride) {
               return '  📦 ' + item.parsed.y.toLocaleString() + suffix;
             },
             footer: items => {
-              if (makorChartFilter !== 'all') return;
-              const total = items.filter(i => i.dataset.yAxisID === 'yCount')
-                                 .reduce((s, i) => s + (i.parsed.y || 0), 0);
-              return 'סה"כ: ' + total.toLocaleString() + ' הזמנות';
+              const idx = items[0]?.dataIndex;
+              const row = (idx !== undefined) ? rows[idx] : null;
+              const lines = [];
+              if (makorChartFilter === 'all') {
+                const total = items.filter(i => i.dataset.yAxisID === 'yCount')
+                                   .reduce((s, i) => s + (i.parsed.y || 0), 0);
+                lines.push('סה"כ: ' + total.toLocaleString() + ' הזמנות');
+              }
+              if (row) {
+                const avg = row.avg_order_value ||
+                  (row.total_orders > 0 ? Math.round((row.total_revenue||0) / (row.total_orders||0)) : 0);
+                if (avg > 0) lines.push('📊 ממוצע הזמנה: ₪' + avg.toLocaleString());
+              }
+              return lines.length ? lines : undefined;
             }
           }
         }
@@ -2658,6 +2720,7 @@ function buildTabs() {
     `<button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>` +
     `<button class="tab" onclick="showClarityTab()" id="tab-clarity">🔍 Clarity</button>` +
     `<button class="tab" onclick="showSearchTermsTab()" id="tab-st">🚫 Negative KWs</button>` +
+    `<button class="tab" onclick="showDuctorsGADash()" id="tab-da">🌀 Google Ads</button>` +
     clients.map(c=>`<button class="tab" id="tab-${c.id}" onclick="showClient(${c.id})">${c.business_name}</button>`).join('');
 }
 
@@ -3644,6 +3707,436 @@ function stSwitchTab(id) {
   document.querySelectorAll('.st-subtab').forEach(b  => b.classList.toggle('active', b.dataset.stab===id));
   document.querySelectorAll('.st-tabpanel').forEach(p => p.classList.toggle('hidden', p.id !== `st-panel-${id}`));
 }
+
+/* ══════════════════════════════════════════════════════
+   Google Ads Dashboard for The Ductors
+   Data: allInsights (Supabase) + Edge Function (ST)
+   ══════════════════════════════════════════════════════ */
+
+const DA_EDGE = 'https://jjzvaqtqtfniuxjfyoyb.supabase.co/functions/v1/search-terms';
+const DA_KEY  = 'nmd-st-2024';
+const DA_ACCT = '5093579819';
+const DA_CPA  = 150;
+const DA_CLIENT_ID = 1; // The Ductors client_id in Supabase
+
+let daSec      = 'overview';
+let daCamp     = '__all__';
+let daMode     = '7d';
+let daSTRows   = null;       // cached search terms
+let daOvCache  = null;       // cached overview rows
+let daUrgentN  = 0;
+let daStGrpOpen = {critical:true,drain:true,ctr0:false,'conv-good':false,'conv-exp':false,watch:false};
+
+function showDuctorsGADash() {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-da')?.classList.add('active');
+  const main = document.getElementById('main-content') || document.querySelector('.main-content') || document.getElementById('content');
+  if (!main) return;
+  main.innerHTML = '<div id="da-shell"></div>';
+  daInit();
+}
+
+function daInit() {
+  daRenderShell();
+  daRefresh();
+}
+
+function daRenderShell() {
+  const shell = document.getElementById('da-shell');
+  if (!shell) return;
+  shell.innerHTML = `
+    <div class="da-controls">
+      <div class="da-date-tabs">
+        ${['3d','7d','14d','mtd'].map(m=>`<button class="da-dtab${daMode===m?' active':''}" onclick="daSetMode('${m}')">${m==='mtd'?'חודש':m}</button>`).join('')}
+      </div>
+      <select class="da-camp-select" id="da-camp-sel" onchange="daSetCamp(this.value)">
+        <option value="__all__">כל הקמפיינים</option>
+      </select>
+    </div>
+    <div class="da-nav">
+      <button class="da-sec-btn${daSec==='overview'?' active':''}" onclick="daPickSec('overview')">📊 סקירה</button>
+      <button class="da-sec-btn${daSec==='st'?' active':''}" onclick="daPickSec('st')">🔎 Search Terms</button>
+      <button class="da-sec-btn${daSec==='insights'?' active':''}" id="da-ins-btn" onclick="daPickSec('insights')">💡 תובנות<span class="da-dot"></span></button>
+    </div>
+    <div id="da-content"><div class="da-loading"><div class="da-loading-spin"></div><br>טוען נתונים...</div></div>
+  `;
+}
+
+function daSetMode(m) {
+  daMode = m;
+  daSTRows = null; daOvCache = null;
+  daRenderShell();
+  daRefresh();
+}
+
+function daSetCamp(val) {
+  daCamp = val;
+  daRefreshDisplay();
+}
+
+function daPickSec(sec) {
+  daSec = sec;
+  document.querySelectorAll('.da-sec-btn').forEach(b=>b.classList.remove('active'));
+  event?.target?.classList.add('active');
+  daRefreshDisplay();
+}
+
+function daRefresh() {
+  const days = daMode==='3d'?3:daMode==='7d'?7:daMode==='14d'?14:(() => {
+    const now = new Date(); return now.getDate();
+  })();
+
+  // Load overview from allInsights
+  daOvCache = null;
+  if (typeof allInsights !== 'undefined') {
+    const clientInsights = allInsights.filter(r=> {
+      if (String(r.client_id) !== String(DA_CLIENT_ID)) return false;
+      if (r.platform && r.platform.toLowerCase().indexOf('google') === -1) return false;
+      // date filter
+      if (r.date) {
+        const d = new Date(r.date);
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-days);
+        if (d < cutoff) return false;
+      }
+      return true;
+    });
+    daOvCache = clientInsights;
+    daPopulateCamps(clientInsights);
+  }
+
+  // Load search terms from Edge Function
+  daSTRows = null;
+  const url = `${DA_EDGE}?accountId=${DA_ACCT}&days=${days}&key=${DA_KEY}`;
+  fetch(url)
+    .then(r=>r.json())
+    .then(data=>{
+      daSTRows = Array.isArray(data) ? data : (data.data || data.rows || []);
+      daRefreshDisplay();
+    })
+    .catch(()=>{ daSTRows = []; daRefreshDisplay(); });
+
+  daRefreshDisplay();
+}
+
+function daPopulateCamps(rows) {
+  const sel = document.getElementById('da-camp-sel');
+  if (!sel) return;
+  // Get campaign names from campaigns global
+  const camps = new Set();
+  rows.forEach(r=>{
+    if (r.campaign_id && typeof campaigns !== 'undefined') {
+      const clientCamps = campaigns[DA_CLIENT_ID] || [];
+      const c = clientCamps.find(x=>String(x.id)===String(r.campaign_id));
+      if (c) camps.add(c.campaign_name);
+    }
+    if (r.campaign_name) camps.add(r.campaign_name);
+  });
+  sel.innerHTML = '<option value="__all__">כל הקמפיינים</option>' +
+    [...camps].sort().map(c=>`<option value="${c}"${daCamp===c?' selected':''}>${c}</option>`).join('');
+}
+
+function daDays() {
+  return daMode==='3d'?3:daMode==='7d'?7:daMode==='14d'?14:new Date().getDate();
+}
+
+function daRefreshDisplay() {
+  const el = document.getElementById('da-content');
+  if (!el) return;
+  if (daSec==='overview') daRenderOverview(el);
+  else if (daSec==='st') daRenderST(el);
+  else if (daSec==='insights') daRenderInsights(el);
+}
+
+function daFmt$(n){ return '$'+Number(n||0).toFixed(0); }
+function daFmtN(n){ return Number(n||0).toLocaleString(); }
+function daCPL(sp,le){ return le>0?(sp/le):0; }
+
+function daChip(cpl) {
+  if (!cpl || cpl===0) return '';
+  const cls = cpl<=DA_CPA?'good':cpl<=DA_CPA*1.5?'warn':'bad';
+  return `<span class="da-chip ${cls}">${daFmt$(cpl)}/ליד</span>`;
+}
+
+function daRowCls(sp, le, cpl) {
+  if (le===0 && sp>200) return 'da-tr-bad';
+  if (cpl > DA_CPA*1.5) return 'da-tr-bad';
+  if (cpl > DA_CPA) return 'da-tr-warn';
+  return 'da-tr-good';
+}
+
+function daRenderOverview(el) {
+  if (!daOvCache) {
+    el.innerHTML = '<div class="da-loading"><div class="da-loading-spin"></div><br>טוען סקירה...</div>';
+    return;
+  }
+  const rows = daOvCache;
+
+  // Group by campaign
+  const campMap = {};
+  rows.forEach(r=>{
+    const cid = r.campaign_id || 'unknown';
+    let name = r.campaign_name || cid;
+    if (!name && typeof campaigns !== 'undefined') {
+      const cl = campaigns[DA_CLIENT_ID] || [];
+      const c = cl.find(x=>String(x.id)===String(cid));
+      if (c) name = c.campaign_name;
+    }
+    if (!campMap[name]) campMap[name] = {name, spend:0, leads:0, conv:0, clicks:0};
+    campMap[name].spend   += Number(r.spend||0);
+    campMap[name].leads   += Number(r.leads||0);
+    campMap[name].conv    += Number(r.conversions||0);
+    campMap[name].clicks  += Number(r.clicks||0);
+  });
+
+  const campRows = Object.values(campMap)
+    .filter(c=> daCamp==='__all__' || c.name===daCamp)
+    .sort((a,b)=>b.spend-a.spend);
+
+  const totSpend = campRows.reduce((s,c)=>s+c.spend,0);
+  const totLeads = campRows.reduce((s,c)=>s+c.leads,0);
+  const totConv  = campRows.reduce((s,c)=>s+c.conv,0);
+  const totCPL   = daCPL(totSpend, totLeads);
+  const urgentN  = campRows.filter(c=>c.spend>200&&c.leads===0).length;
+  daUrgentN = urgentN;
+  const insBtn = document.getElementById('da-ins-btn');
+  if (insBtn) {
+    insBtn.classList.toggle('has-urgent', urgentN>0);
+    insBtn.querySelector('.da-dot').style.display = urgentN>0?'block':'none';
+  }
+
+  el.innerHTML = `
+    <div class="da-kpi-grid">
+      <div class="da-kpi blue"><div class="da-kpi-lbl">השקעה סה"כ</div><div class="da-kpi-val">${daFmt$(totSpend)}</div><div class="da-kpi-sub">${daDays()} ימים אחרונים</div></div>
+      <div class="da-kpi ${totLeads>0?'green':'red'}"><div class="da-kpi-lbl">לידים</div><div class="da-kpi-val">${totLeads}</div><div class="da-kpi-sub">${totConv} המרות</div></div>
+      <div class="da-kpi ${totCPL>0&&totCPL<=DA_CPA?'green':totCPL<=DA_CPA*1.5?'yellow':'red'}"><div class="da-kpi-lbl">CPL</div><div class="da-kpi-val">${totLeads>0?daFmt$(totCPL):'—'}</div><div class="da-kpi-sub">יעד: ${daFmt$(DA_CPA)}</div></div>
+      ${urgentN>0?`<div class="da-kpi red"><div class="da-kpi-lbl">🚨 דחוף</div><div class="da-kpi-val">${urgentN}</div><div class="da-kpi-sub">קמפיינים בבעיה</div></div>`:''}
+    </div>
+    ${campRows.length===0?`<div class="da-empty">אין נתוני Supabase לקמפיין זה בטווח הזמן הנבחר.<br><small>ייתכן שהנתונים בטבלת daily_insights חסרים — ודא שה-ETL רץ.</small></div>`:`
+    <div style="overflow-x:auto">
+    <table class="da-table">
+      <thead><tr><th>קמפיין</th><th>השקעה</th><th>לידים</th><th>CPL</th><th>הקלקות</th></tr></thead>
+      <tbody>
+        ${campRows.map(c=>{
+          const cpl=daCPL(c.spend,c.leads);
+          return `<tr class="${daRowCls(c.spend,c.leads,cpl)}">
+            <td>${c.name}</td>
+            <td>${daFmt$(c.spend)}</td>
+            <td>${c.leads}</td>
+            <td>${daChip(cpl)||'—'}</td>
+            <td>${daFmtN(c.clicks)}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>`}
+  `;
+}
+
+/* ── Search Terms ── */
+const DA_ST_GROUPS = [
+  { id:'critical', cls:'critical', label:'⛔ שלול מיידי', sub:'הוצאה >$200, 0 המרות' },
+  { id:'drain',    cls:'drain',    label:'🔶 שוקל שלילה', sub:'הוצאה $50-200, 0 המרות' },
+  { id:'ctr0',     cls:'ctr0',     label:'⚠️ CTR אפס',    sub:'>30 חשיפות, 0 הקלקות' },
+  { id:'conv-good',cls:'conv-good',label:'✅ ממיר טוב',   sub:'CPL מתחת ליעד' },
+  { id:'conv-exp', cls:'conv-exp', label:'💸 ממיר יקר',   sub:`CPL מעל $${DA_CPA}` },
+  { id:'watch',    cls:'watch',    label:'🔵 לעקוב',       sub:'ניטרלי, שים עין' },
+];
+
+function daClassifyST(r) {
+  const sp  = Number(r.cost||r.spend||0);
+  const cv  = Number(r.conversions||r.conv||0);
+  const imp = Number(r.impressions||r.impr||0);
+  const cl  = Number(r.clicks||0);
+  const cpl = cv>0?sp/cv:0;
+  if (sp>200 && cv===0) return 'critical';
+  if (sp>=50 && sp<=200 && cv===0) return 'drain';
+  if (imp>30 && cl===0) return 'ctr0';
+  if (cv>0 && (cpl<=DA_CPA||cpl===0)) return 'conv-good';
+  if (cv>0 && cpl>DA_CPA) return 'conv-exp';
+  return 'watch';
+}
+
+function daToggleSTG(gid) {
+  daStGrpOpen[gid] = !daStGrpOpen[gid];
+  const body = document.getElementById('da-stg-'+gid);
+  if (body) body.style.display = daStGrpOpen[gid]?'':'none';
+  const arrow = document.getElementById('da-arr-'+gid);
+  if (arrow) arrow.textContent = daStGrpOpen[gid]?'▾':'▸';
+}
+
+function daRenderST(el) {
+  if (!daSTRows) {
+    el.innerHTML = '<div class="da-loading"><div class="da-loading-spin"></div><br>טוען search terms...</div>';
+    return;
+  }
+  const rows = daCamp==='__all__' ? daSTRows : daSTRows.filter(r=>(r.campaign_name||'')===daCamp);
+  if (rows.length===0) {
+    el.innerHTML = '<div class="da-empty">אין search terms לטווח זה / קמפיין זה.</div>';
+    return;
+  }
+
+  const grouped = {};
+  DA_ST_GROUPS.forEach(g=>{ grouped[g.id]=[]; });
+  rows.forEach(r=>{ const g=daClassifyST(r); if(grouped[g]) grouped[g].push(r); });
+
+  const totalWaste = (grouped['critical']||[]).concat(grouped['drain']||[]).reduce((s,r)=>s+Number(r.cost||r.spend||0),0);
+
+  let html = '';
+  if (totalWaste>0) html += `<div class="da-urgent-banner" style="margin-bottom:16px">
+    <div class="da-urgent-title">💸 סה"כ בזבוז: ${daFmt$(totalWaste)}</div>
+    <div style="font-size:13px;color:var(--muted)">${(grouped['critical']||[]).length} ביטויים קריטיים · ${(grouped['drain']||[]).length} ביטויים לשקול שלילה</div>
+  </div>`;
+
+  DA_ST_GROUPS.forEach(g=>{
+    const items = grouped[g.id]||[];
+    const open = !!daStGrpOpen[g.id];
+    html += `
+      <div class="da-stg-hdr ${g.cls}" onclick="daToggleSTG('${g.id}')">
+        <span id="da-arr-${g.id}">${open?'▾':'▸'}</span>
+        <span>${g.label}</span>
+        <span style="margin-right:auto;font-size:11px;opacity:.7">${g.sub}</span>
+        <span style="background:rgba(255,255,255,0.1);border-radius:6px;padding:1px 8px;font-size:11px">${items.length}</span>
+      </div>
+      <div class="da-stg-body" id="da-stg-${g.id}" style="display:${open?'':'none'}">`;
+    if (items.length===0) {
+      html += '<div class="da-empty" style="padding:16px">אין ביטויים בקטגוריה זו</div>';
+    } else {
+      html += `<div style="overflow-x:auto"><table class="da-table">
+        <thead><tr><th>ביטוי</th><th>קמפיין</th><th>חשיפות</th><th>הקלקות</th><th>עלות</th><th>המרות</th><th>CPL</th></tr></thead>
+        <tbody>
+          ${items.map(r=>{
+            const sp=Number(r.cost||r.spend||0);
+            const cv=Number(r.conversions||r.conv||0);
+            const cl=Number(r.clicks||0);
+            const im=Number(r.impressions||r.impr||0);
+            const cpl=cv>0?sp/cv:0;
+            const term=r.search_term||r.term||r.keyword||'—';
+            const camp=r.campaign_name||r.campaign||'—';
+            return `<tr>
+              <td style="font-weight:600">${term}</td>
+              <td style="font-size:11px;color:var(--muted)">${camp}</td>
+              <td>${daFmtN(im)}</td>
+              <td>${daFmtN(cl)}</td>
+              <td>${daFmt$(sp)}</td>
+              <td>${cv}</td>
+              <td>${cpl>0?daChip(cpl):'—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>`;
+    }
+    html += '</div>';
+  });
+
+  el.innerHTML = html;
+}
+
+/* ── Insights ── */
+function daRenderInsights(el) {
+  const loading = (!daOvCache || !daSTRows);
+  if (loading) {
+    el.innerHTML = '<div class="da-loading"><div class="da-loading-spin"></div><br>טוען תובנות...</div>';
+    return;
+  }
+
+  // Urgent: campaigns with spend>200 and 0 leads
+  const campMap={};
+  (daOvCache||[]).forEach(r=>{
+    const cid=r.campaign_id||'unknown';
+    let name=r.campaign_name||cid;
+    if(!campMap[name]) campMap[name]={name,spend:0,leads:0};
+    campMap[name].spend+=Number(r.spend||0);
+    campMap[name].leads+=Number(r.leads||0);
+  });
+  const urgentCamps = Object.values(campMap).filter(c=>c.spend>200&&c.leads===0&&(daCamp==='__all__'||c.name===daCamp));
+
+  // Urgent: ST critical
+  const critST = (daSTRows||[])
+    .filter(r=>daClassifyST(r)==='critical'&&(daCamp==='__all__'||(r.campaign_name||'')=== daCamp))
+    .slice(0,5);
+
+  // Converters
+  const converters = (daSTRows||[])
+    .filter(r=>daClassifyST(r)==='conv-good'&&(daCamp==='__all__'||(r.campaign_name||'')=== daCamp))
+    .sort((a,b)=>Number(b.conversions||b.conv||0)-Number(a.conversions||a.conv||0))
+    .slice(0,8);
+
+  // Watchlist
+  const watchlist = (daSTRows||[])
+    .filter(r=>daClassifyST(r)==='watch'&&(daCamp==='__all__'||(r.campaign_name||'')=== daCamp))
+    .sort((a,b)=>Number(b.cost||b.spend||0)-Number(a.cost||a.spend||0))
+    .slice(0,8);
+
+  let html = '';
+
+  // Urgent banner
+  const hasUrgent = urgentCamps.length>0 || critST.length>0;
+  if (hasUrgent) {
+    html += `<div class="da-urgent-banner">
+      <div class="da-urgent-title">🚨 שינויים דחופים</div>`;
+    urgentCamps.forEach(c=>{
+      html += `<div class="da-urgent-item"><span>🔴</span><div><strong>${c.name}</strong> — ${daFmt$(c.spend)} הוצאה, <strong>0 לידים</strong>. שקול עצירת קמפיין או שינוי מיידי.</div></div>`;
+    });
+    critST.forEach(r=>{
+      const term=r.search_term||r.term||r.keyword||'—';
+      const sp=Number(r.cost||r.spend||0);
+      html += `<div class="da-urgent-item"><span>⛔</span><div>שלול מיידי: <strong>"${term}"</strong> — ${daFmt$(sp)} הוצאה, 0 המרות</div></div>`;
+    });
+    html += '</div>';
+  }
+
+  // Insights grid
+  html += `<div class="da-ins-grid">`;
+
+  // Converters card
+  html += `<div class="da-ins-card">
+    <div class="da-ins-card-title">✅ ביטויים ממירים</div>
+    ${converters.length===0?`<div style="color:var(--muted);font-size:13px">אין ביטויים ממירים בטווח זה</div>`:
+      converters.map(r=>{
+        const term=r.search_term||r.term||r.keyword||'—';
+        const cv=Number(r.conversions||r.conv||0);
+        const sp=Number(r.cost||r.spend||0);
+        return `<div class="da-ins-row"><span style="font-weight:600;font-size:12px">${term}</span><span>${cv} המרות · ${daFmt$(sp)}</span></div>`;
+      }).join('')
+    }
+  </div>`;
+
+  // Watchlist card
+  html += `<div class="da-ins-card">
+    <div class="da-ins-card-title">🔵 ביטויים לעקוב</div>
+    ${watchlist.length===0?`<div style="color:var(--muted);font-size:13px">אין ביטויים לעקוב</div>`:
+      watchlist.map(r=>{
+        const term=r.search_term||r.term||r.keyword||'—';
+        const sp=Number(r.cost||r.spend||0);
+        const cl=Number(r.clicks||0);
+        return `<div class="da-ins-row"><span style="font-weight:600;font-size:12px">${term}</span><span>${daFmt$(sp)} · ${cl} הקלקות</span></div>`;
+      }).join('')
+    }
+  </div>`;
+
+  html += '</div>'; // end ins-grid
+
+  // Campaign summary
+  const campRows = Object.values(campMap)
+    .filter(c=>daCamp==='__all__'||c.name===daCamp)
+    .sort((a,b)=>b.spend-a.spend);
+  if (campRows.length>0) {
+    html += `<div class="da-ins-card" style="margin-top:0">
+      <div class="da-ins-card-title">📊 סיכום קמפיינים</div>
+      <div style="overflow-x:auto"><table class="da-table">
+        <thead><tr><th>קמפיין</th><th>השקעה</th><th>לידים</th><th>CPL</th></tr></thead>
+        <tbody>
+          ${campRows.map(c=>{
+            const cpl=daCPL(c.spend,c.leads);
+            return `<tr class="${daRowCls(c.spend,c.leads,cpl)}"><td>${c.name}</td><td>${daFmt$(c.spend)}</td><td>${c.leads}</td><td>${c.leads>0?daChip(cpl):'—'}</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+  }
+
+  el.innerHTML = html;
+}
+
 </script>
 </body>
 </html>
