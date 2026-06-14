@@ -521,7 +521,7 @@ function getMonthRange() {
 
 let currentDateMode    = 'yesterday';
 let currentClientId   = null;
-let ductorsSourceFilter = 'all'; // 'all' | 'google' | 'facebook'
+let aeroDuctSourceFilter = 'all'; // 'all' | 'google' | 'facebook'
 let asifChart1 = null, asifChart2 = null, asifChart3 = null;
 let asifAllRows = [];
 let asifChartPeriod = 'daily';
@@ -656,7 +656,7 @@ let clients = [], allInsights = [], campaigns = {};
 
 async function loadData() {
   const allClients = await supaFetch('clients', '?is_active=eq.true');
-  const order = ['דני ספרים', 'אסיף', 'מקור השפע', 'The Ductors', 'בורקס אמא', 'שחר אהרוני', 'קאסה קליניק'];
+  const order = ['דני ספרים', 'אסיף', 'מקור השפע', 'Aero Duct Prime', 'בורקס אמא', 'שחר אהרוני', 'קאסה קליניק'];
   clients = [
     ...order.map(name => allClients.find(c => c.business_name === name)).filter(Boolean),
     ...allClients.filter(c => !order.includes(c.business_name))
@@ -1127,7 +1127,7 @@ async function showClient(clientId, dateMode) {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;">📈 גרף ביצועים - ${label}</span>
         <div style="display:flex;gap:8px;align-items:center">
-          ${c.business_name==='The Ductors'?`<div id="ductors-src-filter"></div>`:''}
+          ${c.business_name==='Aero Duct Prime'?`<div id="aeroDuct-src-filter"></div>`:''}
           <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px">
             <button id="perf-period-daily" onclick="setPerfPeriod('daily')" style="padding:3px 10px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#3b82f6;color:#fff;transition:all 0.2s">יומי</button>
             <button id="perf-period-monthly" onclick="setPerfPeriod('monthly')" style="padding:3px 10px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s">חודשי</button>
@@ -1141,7 +1141,7 @@ async function showClient(clientId, dateMode) {
     ${metaCamps.length?`<div class="section-title">📘 קמפיינים Meta</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(metaCamps)}</tbody></table></div>`:''}
     ${googleCamps.length?`<div class="section-title">🔴 קמפיינים Google</div><div class="table-wrap"><table><thead><tr><th>שם קמפיין</th><th>סטטוס</th><th>תקציב חודשי</th><th>הוצא החודש</th><th>ניצול</th><th>יומי ליעד</th><th style="text-align:center">לידים</th><th style="text-align:center">עלות לליד</th></tr></thead><tbody>${campTable(googleCamps)}</tbody></table></div>`:''}
     ${c.business_name==='דני ספרים'?`<div id="daily-sales-container" style="margin-bottom:16px"></div>`:''}
-    ${c.business_name==='The Ductors'?`<div id="leader-table-container"></div><div id="master-conv-container"><div style="padding:24px;color:var(--muted);text-align:center;font-size:13px">⏳ טוען נתוני Master Table...</div></div>`:''}
+    ${c.business_name==='Aero Duct Prime'?`<div id="leader-table-container"></div><div id="master-conv-container"><div style="padding:24px;color:var(--muted);text-align:center;font-size:13px">⏳ טוען נתוני Master Table...</div></div>`:''}
     ${c.clarity_token ? `
     <div class="clarity-chat" id="clarity-chat-${c.id}">
       <div class="clarity-chat-header" onclick="toggleClarityChat(${c.id})">
@@ -1164,8 +1164,8 @@ async function showClient(clientId, dateMode) {
     </div>` : ''}
   `;
 
-  if (c.business_name === 'The Ductors') {
-    renderDuctorsChart(c, from, to, sym);
+  if (c.business_name === 'Aero Duct Prime') {
+    renderAeroDuctChart(c, from, to, sym);
     renderLeaderTable(c, sym, from, to, label);
     renderMasterConversionTable(c, from, to, sym, label);
   } else if (c.business_name !== 'מקור השפע') {
@@ -1324,7 +1324,7 @@ async function renderDaniSales(clientId, from, to, sym) {
   `;
 }
 
-async function renderDuctorsChart(c, from, to, sym) {
+async function renderAeroDuctChart(c, from, to, sym) {
   // ── 1. Destroy previous instance ────────────────────────────────────────
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
   const canvas = document.getElementById('perf-chart');
@@ -1332,11 +1332,11 @@ async function renderDuctorsChart(c, from, to, sym) {
   const ctx = canvas.getContext('2d');
 
   // ── 2. Source-filter dropdown (inject once, sync value on re-renders) ───
-  const filterEl = document.getElementById('ductors-src-filter');
+  const filterEl = document.getElementById('aeroDuct-src-filter');
   if (filterEl) {
     if (!filterEl.querySelector('select')) {
       filterEl.innerHTML =
-        `<select id="ductors-src-sel"
+        `<select id="aeroDuct-src-sel"
            style="background:var(--surface2);border:1px solid var(--border);color:var(--text);
                   padding:4px 10px;border-radius:6px;font-family:'Heebo',sans-serif;
                   font-size:12px;cursor:pointer;outline:none;">
@@ -1344,24 +1344,24 @@ async function renderDuctorsChart(c, from, to, sym) {
            <option value="google">Google</option>
            <option value="facebook">Meta</option>
          </select>`;
-      const sel = document.getElementById('ductors-src-sel');
-      sel.value = ductorsSourceFilter;
+      const sel = document.getElementById('aeroDuct-src-sel');
+      sel.value = aeroDuctSourceFilter;
       sel.addEventListener('change', function () {
-        ductorsSourceFilter = this.value;
+        aeroDuctSourceFilter = this.value;
         const cl = clients.find(x => x.id === c.id);
         const { from: f, to: t, label: lb } = getDateRange(currentDateMode);
-        renderDuctorsChart(cl, f, t, cur(cl));
+        renderAeroDuctChart(cl, f, t, cur(cl));
         renderMasterConversionTable(cl, f, t, cur(cl), lb);
       });
     } else {
-      const sel = document.getElementById('ductors-src-sel');
-      if (sel) sel.value = ductorsSourceFilter;
+      const sel = document.getElementById('aeroDuct-src-sel');
+      if (sel) sel.value = aeroDuctSourceFilter;
     }
   }
 
   // ── 3. Build Supabase source-filter param ────────────────────────────────
-  const srcParam = ductorsSourceFilter === 'google'   ? '&source=eq.Google'
-                 : ductorsSourceFilter === 'facebook' ? '&source=eq.Facebook'
+  const srcParam = aeroDuctSourceFilter === 'google'   ? '&source=eq.Google'
+                 : aeroDuctSourceFilter === 'facebook' ? '&source=eq.Facebook'
                  : '';
 
   // ── 4. Fetch raw daily rows from leader_summary ──────────────────────────
@@ -1371,9 +1371,9 @@ async function renderDuctorsChart(c, from, to, sym) {
     rawRows = await supaFetch('leader_summary',
       `?select=date,received&client_id=eq.${c.id}&date=gte.${from}&date=lte.${to}${srcParam}&order=date.asc`);
   } catch (e) {
-    console.error('[DuctorsChart] fetch error:', e);
+    console.error('[AeroDuctChart] fetch error:', e);
   }
-  console.log('[DuctorsChart] rawRows:', rawRows?.length, JSON.stringify(rawRows?.slice(0, 4)));
+  console.log('[AeroDuctChart] rawRows:', rawRows?.length, JSON.stringify(rawRows?.slice(0, 4)));
 
   if (!rawRows || !rawRows.length) {
     canvas.style.display = 'none';
@@ -1398,8 +1398,8 @@ async function renderDuctorsChart(c, from, to, sym) {
   }
 
   // ── 6. Build platform spend + leads per day from allInsights ─────────────
-  const matchPlat = ductorsSourceFilter === 'google'   ? r => r.platform === 'google'
-                  : ductorsSourceFilter === 'facebook' ? r => r.platform === 'facebook'
+  const matchPlat = aeroDuctSourceFilter === 'google'   ? r => r.platform === 'google'
+                  : aeroDuctSourceFilter === 'facebook' ? r => r.platform === 'facebook'
                   : () => true;
   const insight = {};                             // { 'YYYY-MM-DD': { spend, leads } }
   for (const r of allInsights) {
@@ -1414,7 +1414,7 @@ async function renderDuctorsChart(c, from, to, sym) {
 
   // ── 7. Sorted date list (leader_summary dates are the source of truth) ───
   const dates = Object.keys(byDate).sort();
-  console.log('[DuctorsChart] dates:', dates.length, '| byDate sample:', JSON.stringify(Object.entries(byDate).slice(0, 3)));
+  console.log('[AeroDuctChart] dates:', dates.length, '| byDate sample:', JSON.stringify(Object.entries(byDate).slice(0, 3)));
 
   // ── 8. Build the three value arrays ──────────────────────────────────────
   const valReceived = dates.map(d => byDate[d]);
@@ -1666,10 +1666,10 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
 
   try {
     // ── Source filter ─────────────────────────────────────────────────────
-    const srcFilter = ductorsSourceFilter === 'google'   ? '&source=eq.Google'
-                    : ductorsSourceFilter === 'facebook' ? '&source=eq.Facebook' : '';
-    const activeSources = ductorsSourceFilter === 'google'   ? ['Google']
-                        : ductorsSourceFilter === 'facebook' ? ['Facebook']
+    const srcFilter = aeroDuctSourceFilter === 'google'   ? '&source=eq.Google'
+                    : aeroDuctSourceFilter === 'facebook' ? '&source=eq.Facebook' : '';
+    const activeSources = aeroDuctSourceFilter === 'google'   ? ['Google']
+                        : aeroDuctSourceFilter === 'facebook' ? ['Facebook']
                         : ['Google','Facebook'];
 
     // ── Fetch from Supabase leader_summary ────────────────────────────────
@@ -1694,8 +1694,8 @@ async function renderMasterConversionTable(client, from, to, sym, label) {
 
     // ── daily_insights aggregation (filtered by platform if needed) ───────
     const inRange  = r => r.client_id === clientId && r.date >= from && r.date <= to;
-    const platFilter = ductorsSourceFilter === 'google'   ? r => r.platform==='google'
-                     : ductorsSourceFilter === 'facebook' ? r => r.platform==='facebook'
+    const platFilter = aeroDuctSourceFilter === 'google'   ? r => r.platform==='google'
+                     : aeroDuctSourceFilter === 'facebook' ? r => r.platform==='facebook'
                      : () => true;
     const platData = {
       Google: allInsights.filter(r => inRange(r) && r.platform === 'google').reduce(
@@ -2720,7 +2720,7 @@ function buildTabs() {
     `<button class="tab active" onclick="showOverview()" id="tab-overview">📊 כל הלקוחות</button>` +
     `<button class="tab" onclick="showClarityTab()" id="tab-clarity">🔍 Clarity</button>` +
     `<button class="tab" onclick="showSearchTermsTab()" id="tab-st">🚫 Negative KWs</button>` +
-    `<button class="tab" onclick="showDuctorsGADash()" id="tab-da">🌀 Google Ads</button>` +
+    `<button class="tab" onclick="showAeroDuctGADash()" id="tab-da">🌀 Google Ads</button>` +
     clients.map(c=>`<button class="tab" id="tab-${c.id}" onclick="showClient(${c.id})">${c.business_name}</button>`).join('');
 }
 
@@ -3267,7 +3267,6 @@ async function showClarityDetail(clientId) {
 const ST_ACCOUNTS = [
   { id:'5696308862', name:'Aero Duct | Main',            profile:'aero_duct'   },
   { id:'3776131548', name:'Ceriatric Center',             profile:'generic'     },
-  { id:'5093579819', name:'The ductors',                  profile:'the_ductors' },
   { id:'9067519933', name:'A1 Duct Prime LLC - West',     profile:'generic'     },
   { id:'9540110956', name:'ASBIT',                        profile:'generic'     },
   { id:'4909283595', name:'Aero Duct | Jacksonville',     profile:'aero_duct'   },
@@ -3335,11 +3334,6 @@ const ST_PROFILES = {
     blacklist:      ['lint eater','for drill','daytona','savannah','miami','gainesville','ocala',' rv ','rv duct','heat duct'],
     service_cities: [],   // ריק = ללא פילטר מדינות (רק blacklist פעיל)
     hi_impr: 100, pain_cost: 50, pain_clicks: 5
-  },
-  the_ductors: {
-    blacklist:      [],
-    service_cities: FL_SERVICE_CITIES,  // 📍 רשימת ערי השירות המלאה למעלה
-    hi_impr: 150, pain_cost: 120, pain_clicks: 7
   },
   generic: {
     blacklist:      [],
@@ -3709,15 +3703,15 @@ function stSwitchTab(id) {
 }
 
 /* ══════════════════════════════════════════════════════
-   Google Ads Dashboard for The Ductors
+   Google Ads Dashboard for Aero Duct Prime
    Data: allInsights (Supabase) + Edge Function (ST)
    ══════════════════════════════════════════════════════ */
 
 const DA_EDGE = 'https://jjzvaqtqtfniuxjfyoyb.supabase.co/functions/v1/search-terms';
 const DA_KEY  = 'nmd-st-2024';
-const DA_ACCT = '5093579819';
+const DA_ACCT = 'PLACEHOLDER'; // TODO: update with Aero Duct Prime Google Ads account ID
 const DA_CPA  = 150;
-const DA_CLIENT_ID = 1; // The Ductors client_id in Supabase
+const DA_CLIENT_ID = null; // TODO: update with Aero Duct Prime client_id in Supabase
 
 let daSec      = 'overview';
 let daCamp     = '__all__';
@@ -3727,7 +3721,7 @@ let daOvCache  = null;       // cached overview rows
 let daUrgentN  = 0;
 let daStGrpOpen = {critical:true,drain:true,ctr0:false,'conv-good':false,'conv-exp':false,watch:false};
 
-function showDuctorsGADash() {
+function showAeroDuctGADash() {
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-da')?.classList.add('active');
   const main = document.getElementById('main-content') || document.querySelector('.main-content') || document.getElementById('content');
