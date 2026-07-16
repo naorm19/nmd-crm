@@ -524,6 +524,8 @@ let currentClientId   = null;
 let aeroDuctSourceFilter = 'all'; // 'all' | 'google' | 'facebook'
 let asifChart1 = null, asifChart2 = null, asifChart3 = null;
 let asifAllRows = [];
+let asifStoreRows = [];
+let asifViewMode = 'new'; // 'new' | 'total'
 let asifChartPeriod = 'daily';
 let asifChartSym = '₪';
 let asifChartFrom = '';
@@ -2480,7 +2482,11 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
     </div>
 
     <div class="chart-card" style="margin-bottom:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px">
+          <button id="asif-view-new" onclick="setAsifViewMode('new')" style="padding:4px 12px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#10b981;color:#fff;transition:all 0.2s">לקוחות חדשים</button>
+          <button id="asif-view-total" onclick="setAsifViewMode('total')" style="padding:4px 12px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s">סה״כ לקוחות (כל הלקוחות)</button>
+        </div>
         <div style="font-size:13px;font-weight:700;color:var(--muted2)" id="asif-chart-period-label">📈 לקוחות חדשים וערך הזמנות ליום</div>
         <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px">
           <button id="asif-period-daily" onclick="setAsifPeriod('daily')" style="padding:4px 12px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#10b981;color:#fff;transition:all 0.2s">יומי</button>
@@ -2499,16 +2505,26 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
   // ── Fetch all-time rows for monthly/yearly views ─────────
   asifAllRows = await supaFetch('asif_customers',
     `?select=date,count,total_value&order=date.asc`);
+  // ── Fetch store-wide totals (all customers, from WooCommerce sync) ─
+  asifStoreRows = await supaFetch('store_daily_sales',
+    `?select=date,orders_count,total_sales,customers_count&client_id=eq.${clientId}&order=date.asc`);
   asifChartSym  = sym;
   asifChartFrom = from;
   asifChartTo   = to;
   asifChartPeriod = 'daily';
+  asifViewMode = 'new';
   // Reset toggle buttons
   ['daily','monthly','yearly'].forEach(p => {
     const btn = document.getElementById(`asif-period-${p}`);
     if (!btn) return;
     btn.style.background = p === 'daily' ? '#10b981' : 'transparent';
     btn.style.color      = p === 'daily' ? '#fff'    : 'var(--muted2)';
+  });
+  ['new','total'].forEach(m => {
+    const btn = document.getElementById(`asif-view-${m}`);
+    if (!btn) return;
+    btn.style.background = m === 'new' ? '#10b981' : 'transparent';
+    btn.style.color      = m === 'new' ? '#fff'    : 'var(--muted2)';
   });
   const lbl = document.getElementById('asif-chart-period-label');
   if (lbl) lbl.textContent = '📈 לקוחות חדשים וערך הזמנות ליום';
@@ -2560,8 +2576,133 @@ function setAsifPeriod(period) {
   });
   const labels = { daily:'ליום', monthly:'לחודש', yearly:'לשנה' };
   const lbl = document.getElementById('asif-chart-period-label');
-  if (lbl) lbl.textContent = `📈 לקוחות חדשים וערך הזמנות ${labels[period]}`;
-  drawAsifTimeSeries();
+  const modeLabel = asifViewMode === 'total' ? 'סה״כ לקוחות וסך מכירות' : 'לקוחות חדשים וערך הזמנות';
+  if (lbl) lbl.textContent = `📈 ${modeLabel} ${labels[period]}`;
+  if (asifViewMode === 'total') drawAsifStoreTimeSeries(); else drawAsifTimeSeries();
+}
+
+function setAsifViewMode(mode) {
+  asifViewMode = mode;
+  ['new','total'].forEach(m => {
+    const btn = document.getElementById(`asif-view-${m}`);
+    if (!btn) return;
+    if (m === mode) { btn.style.background = '#3b82f6'; btn.style.color = '#fff'; }
+    else { btn.style.background = 'transparent'; btn.style.color = 'var(--muted2)'; }
+  });
+  const labels = { daily:'ליום', monthly:'לחודש', yearly:'לשנה' };
+  const lbl = document.getElementById('asif-chart-period-label');
+  const modeLabel = mode === 'total' ? 'סה״כ לקוחות וסך מכירות' : 'לקוחות חדשים וערך הזמנות';
+  if (lbl) lbl.textContent = `📈 ${modeLabel} ${labels[asifChartPeriod]}`;
+  if (mode === 'total') drawAsifStoreTimeSeries(); else drawAsifTimeSeries();
+}
+
+function drawAsifStoreTimeSeries() {
+  if (asifChart1) { asifChart1.destroy(); asifChart1 = null; }
+  const canvas = document.getElementById('asif-chart-daily');
+  if (!canvas || !asifStoreRows || !asifStoreRows.length) return;
+
+  const sym = asifChartSym;
+  const period = asifChartPeriod;
+
+  const sourceRows = asifStoreRows.filter(r => r.date >= asifChartFrom && r.date <= asifChartTo);
+
+  const bucketMap = {};
+  for (const r of sourceRows) {
+    const d = r.date;
+    let key;
+    if (period === 'daily')        key = d;
+    else if (period === 'monthly') key = d.substring(0, 7);
+    else                           key = d.substring(0, 4);
+    if (!bucketMap[key]) bucketMap[key] = { customers: 0, sales: 0 };
+    bucketMap[key].customers += parseInt(r.customers_count || 0);
+    bucketMap[key].sales     += parseFloat(r.total_sales || 0);
+  }
+
+  if (period === 'daily' && asifChartFrom && asifChartTo) {
+    const cur = new Date(asifChartFrom);
+    const end = new Date(asifChartTo);
+    while (cur <= end) {
+      const key = cur.toISOString().split('T')[0];
+      if (!bucketMap[key]) bucketMap[key] = { customers: 0, sales: 0 };
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+
+  const keys = Object.keys(bucketMap).sort();
+  const xLabels = keys.map(k => {
+    if (period === 'daily') {
+      const [,m,dy] = k.split('-'); return `${dy}/${m}`;
+    } else if (period === 'monthly') {
+      const [y,m] = k.split('-');
+      const monthNames = ['','ינו','פבר','מרץ','אפר','מאי','יוני','יולי','אוג','ספט','אוק','נוב','דצמ'];
+      return `${monthNames[parseInt(m)]} ${y.slice(2)}`;
+    }
+    return k;
+  });
+
+  const customersArr = keys.map(k => bucketMap[k].customers);
+  const salesArr      = keys.map(k => Math.round(bucketMap[k].sales));
+
+  asifChart1 = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: xLabels,
+      datasets: [
+        {
+          label: 'סה״כ לקוחות',
+          data: customersArr,
+          borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.10)',
+          borderWidth: 2.5, tension: 0.4, fill: true,
+          pointBackgroundColor: '#a78bfa', pointBorderColor: '#1e293b', pointBorderWidth: 1.5,
+          pointRadius: period === 'yearly' ? 6 : 4, pointHoverRadius: 7,
+          yAxisID: 'yCount', order: 2
+        },
+        {
+          label: 'סך מכירות (₪)',
+          data: salesArr,
+          borderColor: '#3b82f6', backgroundColor: 'transparent',
+          borderWidth: 2.5, tension: 0.4, fill: false,
+          pointBackgroundColor: '#3b82f6', pointBorderColor: '#1e293b', pointBorderWidth: 1.5,
+          pointRadius: period === 'yearly' ? 6 : 4, pointHoverRadius: 7,
+          yAxisID: 'yValue', order: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true, position: 'bottom',
+          labels: { color:'#64748b', font:{family:'Heebo',size:11}, boxWidth:10, boxHeight:10, padding:16, usePointStyle:true }
+        },
+        tooltip: {
+          backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1,
+          padding: 12, titleColor:'#94a3b8', bodyColor:'#f1f5f9',
+          titleFont:{family:'Heebo',size:11}, bodyFont:{family:'Heebo',size:13,weight:'600'},
+          callbacks: {
+            label: i => i.dataset.yAxisID === 'yValue'
+              ? '  💰 ' + sym + Math.round(i.parsed.y).toLocaleString('he-IL')
+              : '  👥 ' + i.parsed.y + ' לקוחות'
+          }
+        }
+      },
+      scales: {
+        x: { ticks:{color:'#64748b',font:{family:'Heebo',size:10}}, grid:{color:'rgba(255,255,255,0.04)'}, border:{display:false} },
+        yCount: {
+          position: 'right', beginAtZero: true,
+          ticks: { color:'#a78bfa', font:{family:'Heebo',size:10}, maxTicksLimit:6 },
+          grid: { color:'rgba(255,255,255,0.04)' }, border:{display:false}
+        },
+        yValue: {
+          position: 'left', beginAtZero: true,
+          ticks: { color:'#3b82f6', font:{family:'Heebo',size:10}, maxTicksLimit:6,
+            callback: v => sym + (v>=1000 ? Math.round(v/1000)+'K' : v) },
+          grid: { display:false }, border:{display:false}
+        }
+      }
+    }
+  });
 }
 
 function drawAsifTimeSeries() {
