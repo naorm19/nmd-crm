@@ -2407,6 +2407,12 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
   const prevRows  = await supaFetch('asif_customers',
     `?select=count,total_value&date=gte.${prevFrom}&date=lte.${prevTo}`);
 
+  // ── Total store sales (all customers, not just new) ─────
+  const storeSalesRows = await supaFetch('store_daily_sales',
+    `?select=orders_count,total_sales&client_id=eq.${clientId}&date=gte.${from}&date=lte.${to}`);
+  const storeTotalSales  = (storeSalesRows||[]).reduce((s,r) => s + parseFloat(r.total_sales||0), 0);
+  const storeTotalOrders = (storeSalesRows||[]).reduce((s,r) => s + parseInt(r.orders_count||0), 0);
+
   // ── Totals ────────────────────────────────────────────────
   const totalCount = rows.reduce((s,r) => s + parseInt(r.count||0), 0);
   const totalValue = rows.reduce((s,r) => s + parseFloat(r.total_value||0), 0);
@@ -2465,6 +2471,11 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
         <div class="kpi-label">ממוצע הזמנה ללקוח</div>
         <div class="kpi-val" style="color:var(--yellow)">${sym}${avgOrder.toLocaleString('he-IL')}</div>
         <div class="kpi-sub">ממוצע</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">💰 סך כל המכירות בחנות</div>
+        <div class="kpi-val" style="color:var(--accent)">${sym}${Math.round(storeTotalSales).toLocaleString('he-IL')}</div>
+        <div class="kpi-sub">${storeTotalOrders.toLocaleString('he-IL')} הזמנות · ${label} · כלל הלקוחות (חדשים + קיימים)</div>
       </div>
     </div>
 
@@ -4110,27 +4121,4 @@ function daRenderInsights(el) {
   html += '</div>'; // end ins-grid
 
   // Campaign summary
-  const campRows = Object.values(campMap)
-    .filter(c=>daCamp==='__all__'||c.name===daCamp)
-    .sort((a,b)=>b.spend-a.spend);
-  if (campRows.length>0) {
-    html += `<div class="da-ins-card" style="margin-top:0">
-      <div class="da-ins-card-title">📊 סיכום קמפיינים</div>
-      <div style="overflow-x:auto"><table class="da-table">
-        <thead><tr><th>קמפיין</th><th>השקעה</th><th>לידים</th><th>CPL</th></tr></thead>
-        <tbody>
-          ${campRows.map(c=>{
-            const cpl=daCPL(c.spend,c.leads);
-            return `<tr class="${daRowCls(c.spend,c.leads,cpl)}"><td>${c.name}</td><td>${daFmt$(c.spend)}</td><td>${c.leads}</td><td>${c.leads>0?daChip(cpl):'—'}</td></tr>`;
-          }).join('')}
-        </tbody>
-      </table></div>
-    </div>`;
-  }
-
-  el.innerHTML = html;
-}
-
-</script>
-</body>
-</html>
+  const campRo
