@@ -4121,4 +4121,27 @@ function daRenderInsights(el) {
   html += '</div>'; // end ins-grid
 
   // Campaign summary
-  const campRo
+  const campRows = Object.values(campMap)
+    .filter(c=>daCamp==='__all__'||c.name===daCamp)
+    .sort((a,b)=>b.spend-a.spend);
+  if (campRows.length>0) {
+    html += `<div class="da-ins-card" style="margin-top:0">
+      <div class="da-ins-card-title">📊 סיכום קמפיינים</div>
+      <div style="overflow-x:auto"><table class="da-table">
+        <thead><tr><th>קמפיין</th><th>השקעה</th><th>לידים</th><th>CPL</th></tr></thead>
+        <tbody>
+          ${campRows.map(c=>{
+            const cpl=daCPL(c.spend,c.leads);
+            return `<tr class="${daRowCls(c.spend,c.leads,cpl)}"><td>${c.name}</td><td>${daFmt$(c.spend)}</td><td>${c.leads}</td><td>${c.leads>0?daChip(cpl):'—'}</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+</script>
+</body>
+</html>
