@@ -398,6 +398,67 @@
   .da-loading{text-align:center;padding:40px;color:var(--muted)}
   .da-loading-spin{display:inline-block;width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:10px}
   @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ═══════════════════════ MOBILE / RESPONSIVE ═══════════════════════ */
+  @media (max-width: 640px) {
+    .header { padding:0 14px; }
+    .header-meta { gap:8px; font-size:11px; }
+    .sync-btn { padding:6px 10px; font-size:11px; }
+    .logo-mark { width:30px; height:30px; }
+    .logo-text .t1 { font-size:13px; }
+    .logo-text .t2 { font-size:8px; letter-spacing:1.5px; }
+    .tabs-wrapper { padding:0 10px; -webkit-overflow-scrolling:touch; }
+    .tab { padding:7px 13px; font-size:12px; }
+    .main { padding:14px 12px; }
+
+    /* stack the grids for a single narrow column */
+    .kpi-grid { grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+    .kpi-card { padding:14px; }
+    .kpi-val { font-size:21px; }
+    .kpi-label { font-size:11px; }
+    .budget-cards { grid-template-columns:1fr; gap:12px; }
+    .overview-grid { grid-template-columns:1fr; gap:12px; }
+    .ca-grid { grid-template-columns:1fr; }
+    .ca-detail-grid { grid-template-columns:1fr; }
+    .da-ins-grid { grid-template-columns:1fr; }
+
+    .budget-total-card, .budget-card, .kpi-card, .client-card, .chart-card { padding:16px; }
+    .budget-total-amount { font-size:26px; }
+    .budget-amount { font-size:19px; }
+    .client-title { font-size:19px; }
+
+    /* wide tables scroll sideways instead of being clipped */
+    .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .table-wrap table { min-width:600px; }
+    th, td { padding:10px 12px; font-size:12px; }
+
+    .chart-wrap { height:230px; }
+    .section-title { font-size:13px; }
+
+    /* date-range picker: fit the phone screen instead of a 520px panel */
+    .drp-trigger { padding:7px 12px; font-size:12px; }
+    .drp-panel { position:fixed; top:70px; left:8px; right:8px; min-width:0;
+                 flex-direction:column; max-height:80vh; overflow-y:auto; }
+    .drp-presets { flex-direction:row; flex-wrap:wrap; min-width:0;
+                   border-left:none; border-bottom:1px solid var(--border); }
+    .drp-preset { width:auto; flex:1 1 45%; }
+    .drp-cal-section { padding:12px; }
+
+    /* comfortable login on mobile */
+    .login-box { padding:32px 22px; width:100%; }
+    .login-input { font-size:16px; }  /* 16px prevents iOS zoom-on-focus */
+
+    .clarity-msg.user { max-width:92%; }
+    .clarity-messages { max-height:340px; }
+    .toast { left:12px; right:12px; transform:translateY(80px); width:auto; }
+    .toast.show { transform:translateY(0); }
+  }
+
+  /* very small phones */
+  @media (max-width: 380px) {
+    .kpi-grid { grid-template-columns:1fr; }
+    .client-stats { grid-template-columns:1fr 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -631,7 +692,7 @@ function doLogin() {
   const inp = document.getElementById('login-input');
   const err = document.getElementById('login-error');
   if (inp.value === PASSWORD) {
-    sessionStorage.setItem(SESSION_KEY, '1');
+    localStorage.setItem(SESSION_KEY, '1');
     document.getElementById('login-screen').style.display = 'none';
     init();
   } else {
@@ -641,7 +702,7 @@ function doLogin() {
     setTimeout(() => { inp.classList.remove('error'); err.textContent = ''; }, 2000);
   }
 }
-if (sessionStorage.getItem(SESSION_KEY) === '1') document.getElementById('login-screen').style.display = 'none';
+if (localStorage.getItem(SESSION_KEY) === '1') document.getElementById('login-screen').style.display = 'none';
 
 async function supaFetch(path, params='') {
   const res = await fetch(`${SUPA_URL}/rest/v1/${path}${params}`, {
@@ -2924,7 +2985,7 @@ async function init() {
   }
 }
 
-if (sessionStorage.getItem(SESSION_KEY) === '1') init();
+if (localStorage.getItem(SESSION_KEY) === '1') init();
 
 // ══════════════════════════════════════════════════════════════
 //  CLARITY AI CHAT — powered by Claude
