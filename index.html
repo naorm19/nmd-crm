@@ -1104,6 +1104,7 @@ async function showClient(clientId, dateMode) {
   <div class="client-title">${c.business_name}</div>
   ${datePicker}
 </div>
+    ${c.meta_ad_account_id ? `<div id="meta-banner-${c.id}"></div>` : ''}
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">הוצאה כוללת</div><div class="kpi-val" style="color:var(--accent2)">${sym}${Math.round(ins.spend).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
@@ -1127,6 +1128,9 @@ async function showClient(clientId, dateMode) {
       ` : ''}
     </div>
     <div class="budget-section">${totalCard}${subCards}</div>
+    ${c.meta_ad_account_id ? `<div id="meta-panel-${c.id}" class="chart-card" style="margin-bottom:16px">
+      <div style="text-align:center;padding:20px;color:var(--muted);font-family:'Heebo',sans-serif;font-size:13px">⏳ טוען נתוני Meta Ads...</div>
+    </div>` : ''}
     ${c.business_name==='אסיף'?`<div id="asif-customers-container"><div style="text-align:center;padding:32px;color:var(--muted);font-family:'Heebo',sans-serif">⏳ טוען נתוני לקוחות...</div></div>`:''}
     ${c.business_name==='מקור השפע'?`<div id="makor-monthly-chart" class="chart-card" style="margin-bottom:16px;padding:24px;">
 
@@ -1244,6 +1248,97 @@ async function showClient(clientId, dateMode) {
   if (c.business_name === 'אסיף') renderAsifNewCustomers(c.id, from, to, label, sym);
   if (c.business_name === 'מקור השפע') await loadNewCustomersInline(c.id, from, to);
   if (c.business_name === 'דני ספרים') renderDaniSales(c.id, from, to, sym);
+  if (c.meta_ad_account_id) loadMetaPanel(c.id, sym);
+}
+
+// ── Meta Ads panel (new pipeline: meta_ad_daily / meta_alerts, via the
+//    local sync server - meta_* tables are service_role-only, the
+//    dashboard's anon key cannot read them directly) ─────────────────
+const META_SEVERITY_LABEL = { critical: 'קריטי', warning: 'אזהרה', info: 'מידע' };
+async function loadMetaPanel(clientId, sym) {
+  const panelEl  = document.getElementById(`meta-panel-${clientId}`);
+  const bannerEl = document.getElementById(`meta-banner-${clientId}`);
+  if (!panelEl) return;
+
+  let data;
+  try {
+    const r = await fetch(`http://localhost:3001/meta-overview/${clientId}`);
+    data = await r.json();
+  } catch (e) {
+    panelEl.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:12px;font-family:'Heebo',sans-serif">📘 Meta Ads: לא ניתן להתחבר לשרת הסנכרון המקומי (ודא ש-sync-server פועל)</div>`;
+    return;
+  }
+
+  if (data.error) {
+    panelEl.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:12px;font-family:'Heebo',sans-serif">📘 Meta Ads: ${data.error}</div>`;
+    return;
+  }
+
+  if (!data.mapped) {
+    panelEl.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:12px;font-family:'Heebo',sans-serif">📘 Meta Ads: ${data.message || 'אין חשבון Meta פעיל מקושר ללקוח זה'}</div>`;
+    return;
+  }
+
+  const alerts = data.alerts || [];
+  const critical = alerts.filter(a => a.severity === 'critical');
+
+  // ── Banner: only when there's a real critical issue, never for lack of data ──
+  if (bannerEl) {
+    if (critical.length > 0) {
+      bannerEl.innerHTML = `<div style="background:rgba(239,68,68,0.1);border:1px solid var(--red);border-radius:12px;padding:16px 20px;margin-bottom:8px;font-family:'Heebo',sans-serif">
+        <div style="font-weight:800;color:var(--red);margin-bottom:8px;font-size:14px">🚨 Meta Ads - דורש תשומת לב</div>
+        ${critical.slice(0, 3).map(a => `
+          <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(239,68,68,0.2)">
+            <div style="font-weight:700;font-size:13px;color:var(--text)">${a.title}</div>
+            <div style="font-size:12px;color:var(--muted2);margin-top:2px">${a.explanation || ''}</div>
+            ${a.recommendation ? `<div style="font-size:12px;color:var(--yellow);margin-top:4px">💡 ${a.recommendation}</div>` : ''}
+          </div>`).join('')}
+        ${alerts.length >= 3 ? `<div style="font-size:11px;color:var(--muted)">יתכנו התראות נוספות - ראה פאנל Meta Ads למטה</div>` : ''}
+      </div>`;
+    } else {
+      bannerEl.innerHTML = '';
+    }
+  }
+
+  // ── Inline panel: spend, primary results, freshness, up to 3 alerts ──
+  const li = data.last_import;
+  const importLine = li
+    ? `נתונים נכונים לתאריך <b>${li.data_through || '-'}</b> · סנכרון אחרון: ${li.imported_at ? new Date(li.imported_at).toLocaleString('he-IL') : '-'} · סטטוס: ${li.status === 'success' ? '✅ הצלחה' : `❌ ${li.status}${li.error_message ? ' - ' + li.error_message : ''}`}`
+    : 'טרם בוצע סנכרון נתוני Meta עבור לקוח זה';
+
+  const resultsHtml = (data.primary_results || []).length
+    ? data.primary_results.map(r => `
+      <div class="kpi-card" style="padding:14px">
+        <div class="kpi-label">${r.label}${r.count !== null ? '' : ' (ללא מדד תוצאה יחיד)'}</div>
+        <div class="kpi-val" style="color:var(--accent2);font-size:20px">${r.count !== null ? r.count : (sym + Math.round(r.spend_mtd).toLocaleString('he-IL'))}</div>
+        <div class="kpi-sub">${r.cost_per_result !== null ? `עלות לתוצאה: ${sym}${r.cost_per_result.toLocaleString('he-IL')}` : `הוצאה החודש: ${sym}${Math.round(r.spend_mtd).toLocaleString('he-IL')}`}</div>
+      </div>`).join('')
+    : `<div style="color:var(--muted);font-size:12px;padding:8px">אין עדיין מספיק נתונים לניתוח תוצאות</div>`;
+
+  const alertsHtml = alerts.length
+    ? alerts.map(a => `
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">
+        <span class="budget-status-badge ${a.severity === 'critical' ? 'over' : a.severity === 'warning' ? 'warn' : 'under'}">${META_SEVERITY_LABEL[a.severity] || a.severity}</span>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px;color:var(--text)">${a.title}</div>
+          <div style="font-size:12px;color:var(--muted2);margin-top:2px">${a.explanation || ''}</div>
+        </div>
+      </div>`).join('')
+    : `<div style="display:flex;align-items:center;gap:8px;color:var(--green);font-size:13px;padding:6px 0"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span> לא זוהו בעיות משמעותיות</div>`;
+
+  panelEl.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px">📘 Meta Ads</span>
+      <button onclick="loadMetaPanel(${clientId}, '${sym}')" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif">🔄 רענן</button>
+    </div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
+      <div class="kpi-card" style="padding:14px"><div class="kpi-label">הוצאה היום</div><div class="kpi-val" style="color:var(--accent2);font-size:20px">${sym}${Math.round(data.spend_today).toLocaleString('he-IL')}</div></div>
+      <div class="kpi-card" style="padding:14px"><div class="kpi-label">הוצאה החודש</div><div class="kpi-val" style="color:var(--accent2);font-size:20px">${sym}${Math.round(data.spend_month).toLocaleString('he-IL')}</div></div>
+      ${resultsHtml}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${importLine}</div>
+    <div>${alertsHtml}</div>
+  `;
 }
 
 function renderChart(c, from, to, sym) {
