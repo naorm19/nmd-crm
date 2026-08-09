@@ -1,0 +1,9 @@
+{
+  "name": "nmd-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NMD CRM dashboard - static site (no build step). devDependency below is only for local Supabase CLI usage (migrations, edge function deploys).",
+  "devDependencies": {
+    "supabase": "^2.113.0"
+  }
+}

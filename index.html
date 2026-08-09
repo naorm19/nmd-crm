@@ -531,9 +531,15 @@
 <script>
 const SUPA_URL = 'https://jjzvaqtqtfniuxjfyoyb.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqenZhcXRxdGZuaXV4amZ5b3liIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNTc0OTIsImV4cCI6MjA4ODYzMzQ5Mn0.ZwUnfYUPelnfvEcr_hlyh0ImiwXv__Cs2Y9V3Snl9c0';
-const PASSWORD = 'NMD123';
-const SESSION_KEY = 'nmd_auth';
+// Meta Ads Edge Function - the only path this dashboard uses for meta_*
+// data (those tables are service_role-only). The real password/token
+// lives only as the META_DASHBOARD_TOKEN secret on the Supabase side -
+// nothing here is a working credential by itself.
+const META_API_URL = 'https://jjzvaqtqtfniuxjfyoyb.supabase.co/functions/v1/meta-ads';
+const META_TOKEN_KEY = 'nmd_meta_token'; // sessionStorage only - never localStorage
 let chartInstance = null;
+
+function getMetaToken() { return sessionStorage.getItem(META_TOKEN_KEY) || ''; }
 
 function cur(client) { return client.currency === 'ILS' ? '₪' : '$'; }
 function goalLabel(client, type) {
@@ -688,11 +694,28 @@ document.addEventListener('click', e => {
   }
 });
 
-function doLogin() {
+async function doLogin() {
   const inp = document.getElementById('login-input');
   const err = document.getElementById('login-error');
-  if (inp.value === PASSWORD) {
-    localStorage.setItem(SESSION_KEY, '1');
+  const btn = document.querySelector('.login-box button');
+  const password = inp.value;
+  let ok = false;
+  if (btn) { btn.disabled = true; }
+  try {
+    const res = await fetch(`${META_API_URL}?action=auth-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    ok = !!data.ok;
+  } catch (e) {
+    ok = false;
+  }
+  if (btn) { btn.disabled = false; }
+
+  if (ok) {
+    sessionStorage.setItem(META_TOKEN_KEY, password); // sessionStorage only - never localStorage, never logged
     document.getElementById('login-screen').style.display = 'none';
     init();
   } else {
@@ -702,7 +725,7 @@ function doLogin() {
     setTimeout(() => { inp.classList.remove('error'); err.textContent = ''; }, 2000);
   }
 }
-if (localStorage.getItem(SESSION_KEY) === '1') document.getElementById('login-screen').style.display = 'none';
+if (getMetaToken()) document.getElementById('login-screen').style.display = 'none';
 
 async function supaFetch(path, params='') {
   const res = await fetch(`${SUPA_URL}/rest/v1/${path}${params}`, {
@@ -1252,9 +1275,24 @@ async function showClient(clientId, dateMode) {
 }
 
 // ── Meta Ads panel (new pipeline: meta_ad_daily / meta_alerts, via the
-//    local sync server - meta_* tables are service_role-only, the
-//    dashboard's anon key cannot read them directly) ─────────────────
+//    Supabase Edge Function - meta_* tables are service_role-only, the
+//    dashboard's anon key cannot read them directly, and this runs from
+//    any machine - no localhost dependency) ──────────────────────────
 const META_SEVERITY_LABEL = { critical: 'קריטי', warning: 'אזהרה', info: 'מידע' };
+
+async function metaFetch(action, opts = {}) {
+  const url = new URL(META_API_URL);
+  url.searchParams.set('action', action);
+  if (opts.params) for (const [k, v] of Object.entries(opts.params)) url.searchParams.set(k, v);
+  const res = await fetch(url.toString(), {
+    method: opts.method || 'GET',
+    headers: { 'X-Dashboard-Token': getMetaToken(), ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+
 async function loadMetaPanel(clientId, sym) {
   const panelEl  = document.getElementById(`meta-panel-${clientId}`);
   const bannerEl = document.getElementById(`meta-banner-${clientId}`);
@@ -1262,10 +1300,14 @@ async function loadMetaPanel(clientId, sym) {
 
   let data;
   try {
-    const r = await fetch(`http://localhost:3001/meta-overview/${clientId}`);
-    data = await r.json();
+    const r = await metaFetch('overview', { params: { client_id: clientId } });
+    if (!r.ok) {
+      panelEl.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:12px;font-family:'Heebo',sans-serif">📘 Meta Ads: ${r.data.error || 'שגיאת שרת'}</div>`;
+      return;
+    }
+    data = r.data;
   } catch (e) {
-    panelEl.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:12px;font-family:'Heebo',sans-serif">📘 Meta Ads: לא ניתן להתחבר לשרת הסנכרון המקומי (ודא ש-sync-server פועל)</div>`;
+    panelEl.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:12px;font-family:'Heebo',sans-serif">📘 Meta Ads: לא ניתן להתחבר ל-Edge Function</div>`;
     return;
   }
 
@@ -1329,8 +1371,12 @@ async function loadMetaPanel(clientId, sym) {
   panelEl.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px">📘 Meta Ads</span>
-      <button onclick="loadMetaPanel(${clientId}, '${sym}')" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif">🔄 רענן</button>
+      <div style="display:flex;gap:8px">
+        <button id="meta-sync-btn-${clientId}" onclick="syncMeta(${clientId}, '${sym}')" style="background:var(--accent);border:none;color:#fff;padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;font-weight:600">🔄 סנכרון Meta</button>
+        <button onclick="loadMetaPanel(${clientId}, '${sym}')" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif">↻ רענן</button>
+      </div>
     </div>
+    <div id="meta-sync-status-${clientId}"></div>
     <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
       <div class="kpi-card" style="padding:14px"><div class="kpi-label">הוצאה היום</div><div class="kpi-val" style="color:var(--accent2);font-size:20px">${sym}${Math.round(data.spend_today).toLocaleString('he-IL')}</div></div>
       <div class="kpi-card" style="padding:14px"><div class="kpi-label">הוצאה החודש</div><div class="kpi-val" style="color:var(--accent2);font-size:20px">${sym}${Math.round(data.spend_month).toLocaleString('he-IL')}</div></div>
@@ -1339,6 +1385,32 @@ async function loadMetaPanel(clientId, sym) {
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${importLine}</div>
     <div>${alertsHtml}</div>
   `;
+}
+
+async function syncMeta(clientId, sym) {
+  const btn = document.getElementById(`meta-sync-btn-${clientId}`);
+  const statusEl = document.getElementById(`meta-sync-status-${clientId}`);
+  if (!btn || btn.disabled) return; // prevent double-click
+  btn.disabled = true;
+  btn.textContent = '⏳ מסנכרן...';
+  if (statusEl) statusEl.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">⏳ קורא את הגיליון, מייבא ומריץ ניתוח - זה יכול לקחת כמה שניות...</div>`;
+
+  try {
+    const r = await metaFetch('sync', { method: 'POST' });
+    if (!r.ok || !r.data.ok) {
+      const msg = r.data?.import?.error_message || r.data?.error || 'שגיאה לא ידועה';
+      if (statusEl) statusEl.innerHTML = `<div style="font-size:12px;color:var(--red);margin-bottom:10px">❌ הסנכרון נכשל: ${msg}</div>`;
+    } else {
+      const imp = r.data.import || {};
+      if (statusEl) statusEl.innerHTML = `<div style="font-size:12px;color:var(--green);margin-bottom:10px">✅ סונכרן - ${imp.row_count ?? '-'} שורות נקראו (${imp.inserted_count ?? 0} חדשות, ${imp.updated_count ?? 0} עודכנו), נכון לתאריך ${imp.data_through ?? '-'}</div>`;
+      await loadMetaPanel(clientId, sym); // refresh panel with the new data - this re-renders meta-sync-status too
+      return;
+    }
+  } catch (e) {
+    if (statusEl) statusEl.innerHTML = `<div style="font-size:12px;color:var(--red);margin-bottom:10px">❌ לא ניתן להתחבר ל-Edge Function</div>`;
+  }
+  btn.disabled = false;
+  btn.textContent = '🔄 סנכרון Meta';
 }
 
 function renderChart(c, from, to, sym) {
@@ -3080,7 +3152,7 @@ async function init() {
   }
 }
 
-if (localStorage.getItem(SESSION_KEY) === '1') init();
+if (getMetaToken()) init();
 
 // ══════════════════════════════════════════════════════════════
 //  CLARITY AI CHAT — powered by Claude

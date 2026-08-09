@@ -1,0 +1,8 @@
+# This function implements its own auth (META_DASHBOARD_TOKEN header check
+# + Origin allowlist, see supabase/functions/meta-ads/index.ts) rather than
+# Supabase Auth JWTs - the dashboard is a static public page with no
+# Supabase Auth session, so there is no JWT for it to send. Without this,
+# Supabase's gateway rejects every request before it reaches the function's
+# own auth check.
+[functions.meta-ads]
+verify_jwt = false
