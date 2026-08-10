@@ -56,7 +56,8 @@ const DEFAULT_THRESHOLDS = {
   ad_concentration_perf_gap_pct: 25,
   freshness_warning_days: 4,
   freshness_critical_days: 6,
-  tranquilo_not_spending_ratio: 0.10
+  tranquilo_not_spending_ratio: 0.10,
+  min_spend_no_result: 150 // an ad/campaign must spend at least this much with zero results before it's worth flagging
 };
 
 function mergeThresholds(base: typeof DEFAULT_THRESHOLDS, override: unknown) {
@@ -130,6 +131,24 @@ async function upsertAlert(supabase: SupabaseClient, clientId: number, accountId
     .limit(1);
 
   const existing = existingRows && existingRows[0];
+
+  if (!existing) {
+    // Don't immediately recreate an alert the user just resolved while the
+    // underlying condition is still true - a sync run right after resolving
+    // must not silently reopen it. A short cooldown distinguishes that from
+    // a genuinely new occurrence (e.g. resolved last month, reappeared this
+    // month), which should still surface as a fresh alert.
+    const cooldownSince = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentlyResolved } = await supabase
+      .from('meta_alerts')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('fingerprint', fingerprint)
+      .eq('status', 'resolved')
+      .gte('resolved_at', cooldownSince)
+      .limit(1);
+    if (recentlyResolved && recentlyResolved[0]) return fingerprint;
+  }
 
   if (existing) {
     await supabase.from('meta_alerts').update({
@@ -211,7 +230,7 @@ function ruleBudgetPacing(client: any, accountId: string, rows: any[], dataThrou
       severity: 'critical', rule_type: 'budget_forecast', entity_level: 'account', entity_id: accountId,
       entity_name: client.business_name,
       title: `${client.business_name}: חריגה מהתקציב החודשי`,
-      explanation: `הוצאה בפועל מתחילת החודש (${evidence.spend_mtd}) כבר עברה את התקציב החודשי (${budget}).`,
+      explanation: `הוצאה בפועל מתחילת החודש (${evidence.spend_mtd}₪) כבר עברה את התקציב החודשי (${budget}₪).`,
       recommendation: 'לבדוק אם להוריד תקציב יומי או להשהות קמפיינים עד סוף החודש.',
       evidence_json: evidence
     });
@@ -220,7 +239,7 @@ function ruleBudgetPacing(client: any, accountId: string, rows: any[], dataThrou
       severity: 'critical', rule_type: 'budget_forecast', entity_level: 'account', entity_id: accountId,
       entity_name: client.business_name,
       title: `${client.business_name}: תחזית הוצאה חודשית ${evidence.forecast_pct_of_budget}% מהתקציב`,
-      explanation: `בקצב הנוכחי (${evidence.spend_mtd} ב-${elapsed} ימים), ההוצאה תגיע ל-${evidence.forecast_month_end} עד סוף החודש, מול תקציב ${budget}.`,
+      explanation: `בקצב הנוכחי (${evidence.spend_mtd}₪ ב-${elapsed} ימים), ההוצאה תגיע ל-${evidence.forecast_month_end}₪ עד סוף החודש, מול תקציב ${budget}₪.`,
       recommendation: 'להוריד תקציב יומי בקמפיינים הפעילים לפני שהחריגה תתממש.',
       evidence_json: evidence
     });
@@ -229,7 +248,7 @@ function ruleBudgetPacing(client: any, accountId: string, rows: any[], dataThrou
       severity: 'warning', rule_type: 'budget_forecast', entity_level: 'account', entity_id: accountId,
       entity_name: client.business_name,
       title: `${client.business_name}: תחזית הוצאה חודשית קרובה לתקציב (${evidence.forecast_pct_of_budget}%)`,
-      explanation: `בקצב הנוכחי, ההוצאה החודשית צפויה להגיע ל-${evidence.forecast_month_end} מול תקציב ${budget}.`,
+      explanation: `בקצב הנוכחי, ההוצאה החודשית צפויה להגיע ל-${evidence.forecast_month_end}₪ מול תקציב ${budget}₪.`,
       recommendation: 'לעקוב בימים הקרובים ולשקול התאמת תקציב יומי.',
       evidence_json: evidence
     });
@@ -268,6 +287,7 @@ function ruleZeroResultBurn(client: any, accountId: string, campaignRows: any[],
   const out = [];
   for (const [adId, d] of Object.entries(byAd)) {
     if ((d as any).results > 0 || (d as any).spend <= 0) continue;
+    if ((d as any).spend < thresholds.min_spend_no_result) continue; // too small to be worth a task
     const ratio = (d as any).spend / avgCost;
     if (ratio >= thresholds.burning_critical_multiplier) {
       out.push(makeBurnAlert('critical', client, accountId, campaignId, campaignName, adId, d, avgCost, resultType));
@@ -283,8 +303,8 @@ function makeBurnAlert(severity: string, client: any, accountId: string, campaig
   return {
     severity, rule_type: 'ad_zero_result_burn', entity_level: 'ad', entity_id: adId,
     entity_name: d.ad_name,
-    title: `${client.business_name} / ${d.ad_name}: הוצאה של ${d.spend.toFixed(0)} ללא ${label}`,
-    explanation: `המודעה "${d.ad_name}" בקמפיין "${campaignName}" הוציאה ${d.spend.toFixed(0)} ב-7 הימים האחרונים ולא הביאה אף ${label.slice(0, -1)}, מול עלות ממוצעת בקמפיין של ${avgCost.toFixed(1)}.`,
+    title: `${client.business_name} / ${d.ad_name}: הוצאה של ${d.spend.toFixed(0)}₪ ללא ${label}`,
+    explanation: `המודעה "${d.ad_name}" בקמפיין "${campaignName}" הוציאה ${d.spend.toFixed(0)}₪ ב-7 הימים האחרונים ולא הביאה אף ${label.slice(0, -1)}, מול עלות ממוצעת בקמפיין של ${avgCost.toFixed(1)}₪.`,
     recommendation: severity === 'critical' ? 'לשקול השהיית המודעה ובדיקת הקריאייטיב/הטירגוט.' : 'לעקוב - אם ימשיך כך יומיים נוספים, לשקול השהיה.',
     evidence_json: { campaign_id: campaignId, campaign_name: campaignName, ad_spend_7d: Number(d.spend.toFixed(2)), avg_cost_per_result: Number(avgCost.toFixed(2)), result_type: resultType }
   };
@@ -320,7 +340,7 @@ function ruleCreativeGap(client: any, accountId: string, campaignRows: any[], ca
   return [{
     severity: 'warning', rule_type: 'creative_gap', entity_level: 'campaign', entity_id: campaignId, entity_name: campaignName,
     title: `${client.business_name} / ${campaignName}: פער קריאייטיב בין מודעות`,
-    explanation: `המודעה "${priciest.ad_name}" עולה ${priciest.cost.toFixed(1)} ל${label} לעומת "${cheapest.ad_name}" ב-${cheapest.cost.toFixed(1)} - פער של פי ${ratio.toFixed(1)} (7 ימים אחרונים, שתי המודעות עם הוצאה משמעותית).`,
+    explanation: `המודעה "${priciest.ad_name}" עולה ${priciest.cost.toFixed(1)}₪ ל${label} לעומת "${cheapest.ad_name}" ב-${cheapest.cost.toFixed(1)}₪ - פער של פי ${ratio.toFixed(1)} (7 ימים אחרונים, שתי המודעות עם הוצאה משמעותית).`,
     recommendation: `לבדוק מה שונה בקריאייטיב/קהל של "${priciest.ad_name}" ולשקול הפניית תקציב ל"${cheapest.ad_name}".`,
     evidence_json: {
       campaign_id: campaignId, campaign_name: campaignName, result_type: resultType,
@@ -372,7 +392,7 @@ function ruleAdBudgetConcentration(client: any, accountId: string, campaignRows:
     out.push({
       severity: 'warning', rule_type: 'ad_budget_concentration', entity_level: 'ad', entity_id: adId, entity_name: d.ad_name,
       title: `${client.business_name} / ${d.ad_name}: ריכוז תקציב במודעה חלשה`,
-      explanation: `המודעה "${d.ad_name}" בקמפיין "${campaignName}" צרכה ${budgetSharePct.toFixed(0)}% מתקציב הקמפיין (7 ימים) ועלות התוצאה שלה (${adCost.toFixed(1)}) גרועה ב-${underperformPct.toFixed(0)}% מהממוצע בקמפיין (${avgCost.toFixed(1)}).`,
+      explanation: `המודעה "${d.ad_name}" בקמפיין "${campaignName}" צרכה ${budgetSharePct.toFixed(0)}% מתקציב הקמפיין (7 ימים) ועלות התוצאה שלה (${adCost.toFixed(1)}₪) גרועה ב-${underperformPct.toFixed(0)}% מהממוצע בקמפיין (${avgCost.toFixed(1)}₪).`,
       recommendation: 'לשקול הקטנת תקציב למודעה זו לטובת מודעות עם עלות תוצאה טובה יותר.',
       evidence_json: {
         campaign_id: campaignId, campaign_name: campaignName, result_type: resultType,
@@ -476,7 +496,7 @@ function ruleTranquiloNotSpending(client: any, accountId: string, campaignRows: 
       out.push({
         severity: 'critical', rule_type: 'tranquilo_ad_not_spending', entity_level: 'ad', entity_id: adId, entity_name: d.ad_name,
         title: `${client.business_name} / ${d.ad_name}: מודעה פעילה כמעט לא מוציאה`,
-        explanation: `המודעה "${d.ad_name}" פעילה אך הוציאה רק ${d.spend.toFixed(1)} ב-3 הימים האחרונים, מול חציון ${median.toFixed(1)} בקרב המודעות הפעילות בקמפיין "${campaignName}".`,
+        explanation: `המודעה "${d.ad_name}" פעילה אך הוציאה רק ${d.spend.toFixed(1)}₪ ב-3 הימים האחרונים, מול חציון ${median.toFixed(1)}₪ בקרב המודעות הפעילות בקמפיין "${campaignName}".`,
         recommendation: 'לבדוק אישור/דחיית המודעה ב-Meta, או בעיית משלוח (delivery).',
         evidence_json: { campaign_id: campaignId, campaign_name: campaignName, ad_spend_3d: Number(d.spend.toFixed(2)), sibling_median_3d: Number(median.toFixed(2)) }
       });

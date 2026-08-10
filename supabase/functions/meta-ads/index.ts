@@ -1,6 +1,6 @@
 // ============================================================
 //  Meta Ads Edge Function
-//  Actions: auth-check | overview | sync
+//  Actions: auth-check | overview | sync | resolve-alert
 //
 //  This is the ONLY way the public dashboard (GitHub Pages,
 //  static HTML with an anon key baked into the page source)
@@ -83,7 +83,7 @@ async function handleOverview(supabase: any, clientId: number) {
   const today = israelDateString(0);
   const monthStart = today.slice(0, 7) + '-01';
 
-  const [{ data: monthRows, error: rErr }, { data: lastImport }, { data: alerts }, { data: configs }] = await Promise.all([
+  const [{ data: monthRows, error: rErr }, { data: lastImport }, { data: activeAlerts }, { data: resolvedAlerts }, { data: configs }] = await Promise.all([
     supabase.from('meta_ad_daily')
       .select('day, amount_spent, campaign_id, purchases, messaging_conversations_started, leads')
       .in('account_id', accountIds)
@@ -94,13 +94,22 @@ async function handleOverview(supabase: any, clientId: number) {
       .order('imported_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // Full active list - the panel renders these as a checkable task list,
+    // not just a 3-item preview (that cap is applied client-side, only for
+    // the top-of-page critical banner).
     supabase.from('meta_alerts')
-      .select('severity, title, explanation, recommendation, entity_name, data_through, last_detected_at')
+      .select('id, severity, title, explanation, recommendation, entity_name, data_through, last_detected_at, status')
       .eq('client_id', clientId)
-      .in('status', ['open', 'acknowledged'])
+      .in('status', ['open', 'acknowledged', 'snoozed'])
       .order('severity', { ascending: true })
-      .order('last_detected_at', { ascending: false })
-      .limit(3),
+      .order('last_detected_at', { ascending: false }),
+    // Collapsed "show resolved" section - capped, most recent first.
+    supabase.from('meta_alerts')
+      .select('id, severity, title, explanation, recommendation, entity_name, data_through, resolved_at, status')
+      .eq('client_id', clientId)
+      .eq('status', 'resolved')
+      .order('resolved_at', { ascending: false })
+      .limit(20),
     supabase.from('meta_analysis_config')
       .select('campaign_id, result_type')
       .in('account_id', accountIds)
@@ -141,8 +150,24 @@ async function handleOverview(supabase: any, clientId: number) {
     unclassified_spend_mtd: Number(unclassifiedSpend.toFixed(2)),
     primary_results: primaryResults,
     last_import: lastImport || null,
-    alerts: alerts || []
+    alerts: activeAlerts || [],
+    resolved_alerts: resolvedAlerts || []
   };
+}
+
+async function handleResolveAlert(supabase: any, alertId: number, resolved: boolean) {
+  const patch = resolved
+    ? { status: 'resolved', resolved_at: new Date().toISOString() }
+    : { status: 'open', resolved_at: null };
+  const { data, error } = await supabase
+    .from('meta_alerts')
+    .update(patch)
+    .eq('id', alertId)
+    .select('id, status')
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('Alert not found');
+  return { ok: true, id: data.id, status: data.status };
 }
 
 async function handleSync(supabase: any) {
@@ -231,7 +256,16 @@ Deno.serve(async (req: Request) => {
       return json(data, data.ok === false ? 502 : 200, origin);
     }
 
-    return json({ error: 'Unknown or missing action. Use auth-check | overview | sync.' }, 400, origin);
+    if (action === 'resolve-alert') {
+      if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405, origin);
+      const body = await req.json().catch(() => ({}));
+      const alertId = parseInt(body.alert_id, 10);
+      if (!Number.isInteger(alertId)) return json({ error: 'Invalid alert_id' }, 400, origin);
+      const data = await handleResolveAlert(supabase, alertId, !!body.resolved);
+      return json(data, 200, origin);
+    }
+
+    return json({ error: 'Unknown or missing action. Use auth-check | overview | sync | resolve-alert.' }, 400, origin);
   } catch (e) {
     console.error('[meta-ads]', e instanceof Error ? e.message : String(e));
     return json({ error: e instanceof Error ? e.message : 'Internal error' }, 500, origin);

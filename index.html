@@ -565,6 +565,108 @@ function getBudgetStatus(spent, budget) {
   return { label:'בקצב', cls:'ok' };
 }
 
+// ── Meta budget: pace/forecast/status based on data_through (the last day
+//    actually imported), never on today's real date - a stale report must
+//    not silently produce a wrong forecast. ───────────────────────────
+function paceForDate(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return d / new Date(y, m, 0).getDate();
+}
+function forecastForDate(spend, dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  return d > 0 ? (spend / d) * daysInMonth : spend;
+}
+function metaBudgetStatus(spend, budget, forecast, pace) {
+  if (!budget) return null;
+  if (spend > budget || forecast > budget) return { label:'חריגה', cls:'over' };
+  if ((spend/budget) - pace > 0.05) return { label:'מעל הקצב', cls:'warn' };
+  return { label:'בקצב', cls:'ok' };
+}
+// clientId -> { spend_today, spend_month, data_through } - populated by
+// loadMetaPanel() from the real meta_ad_daily-backed Edge Function, the
+// single source of truth for Meta spend across the dashboard.
+let metaSpendCache = {};
+
+// Builds the top-of-page budget section (combined total + per-platform
+// cards). Self-contained so it can be called both on initial client-page
+// render and again after the async Meta fetch resolves, to patch
+// #budget-section-<id> with the real number instead of leaving 0/stale.
+function buildBudgetSectionHtml(clientId) {
+  const c = clients.find(x => x.id === clientId);
+  if (!c) return '';
+  const sym = cur(c);
+  const cached = metaSpendCache[clientId];
+  const mtdMeta      = cached ? cached.spend_month : 0;
+  const metaThrough  = cached ? cached.data_through : null;
+  const mtdGoogle    = getMonthSpend(c.id, 'google');
+  const mtdTotal     = mtdMeta + mtdGoogle;
+  const budgetMeta   = c.monthly_budget_meta   || 0;
+  const budgetGoogle = c.monthly_budget_google || 0;
+  const budgetTotal  = budgetMeta + budgetGoogle;
+  const pace     = getMonthPace();
+  const paceDay  = Math.round(pace * new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate());
+
+  const metaPace     = metaThrough ? paceForDate(metaThrough) : pace;
+  const metaForecast = metaThrough ? forecastForDate(mtdMeta, metaThrough) : mtdMeta;
+  const metaRemaining = budgetMeta - mtdMeta;
+  const mStatus = metaBudgetStatus(mtdMeta, budgetMeta, metaForecast, metaPace);
+
+  const totalCard = budgetTotal>0 ? `
+    <div class="budget-total-card">
+      <div class="budget-total-header">
+        <div class="budget-total-title">💰 סה"כ תקציב חודשי</div>
+        ${getBudgetStatus(mtdTotal,budgetTotal)?`<span class="budget-status-badge ${getBudgetStatus(mtdTotal,budgetTotal).cls}">${getBudgetStatus(mtdTotal,budgetTotal).label}</span>`:''}
+      </div>
+      <div class="budget-total-amount">${sym}${Math.round(mtdTotal).toLocaleString('he-IL')} <span style="font-size:16px;color:var(--muted)">/ ${sym}${Math.round(budgetTotal).toLocaleString('he-IL')}</span></div>
+      <div class="budget-pace-info" style="margin-top:6px">יום ${paceDay} בחודש - אמורים להיות על <span>${(pace*100).toFixed(0)}%</span> | בפועל: <span>${(mtdTotal/budgetTotal*100).toFixed(0)}%</span></div>
+      ${budgetBarHtml(mtdTotal,budgetTotal,true)}
+    </div>` : '';
+
+  const subCards = `<div class="budget-cards">
+    ${c.meta_ad_account_id?`<div class="budget-card">
+      <div class="budget-card-header"><div class="budget-card-title">📘 Meta</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${mStatus?`<span class="budget-status-badge ${mStatus.cls}">${mStatus.label}</span>`:''}
+          <button class="edit-btn" onclick="toggleBudgetEdit('meta')">✏️</button>
+        </div>
+      </div>
+      <div class="budget-amount">${sym}${Math.round(budgetMeta).toLocaleString('he-IL')}</div>
+      <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdMeta).toLocaleString('he-IL')} (${budgetMeta>0?(mtdMeta/budgetMeta*100).toFixed(0):0}%)${!cached?' <span style="color:var(--muted)">- טוען...</span>':''}</div>
+      ${computeBudgetBarHtml(mtdMeta,budgetMeta,metaPace,false,mStatus)}
+      ${budgetMeta>0?`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2);margin-top:8px">
+        <span>יתרה: ${sym}${Math.round(metaRemaining).toLocaleString('he-IL')}</span>
+        <span>${metaThrough?`תחזית לסוף החודש: ${sym}${Math.round(metaForecast).toLocaleString('he-IL')} (נכון ל-${metaThrough})`:'תחזית: טרם נטענו נתונים'}</span>
+      </div>`:''}
+      <div id="budget-meta-edit" style="display:none;margin-top:10px">
+        <div class="budget-edit-row">
+          <input class="budget-input" id="budget-meta-input" type="number" value="${budgetMeta}" />
+          <button class="save-btn" onclick="saveBudget('meta',${c.id})">שמור</button>
+        </div>
+      </div>
+    </div>`:''}
+    ${c.google_customer_id?`<div class="budget-card">
+      <div class="budget-card-header"><div class="budget-card-title">🔴 Google</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${getBudgetStatus(mtdGoogle,budgetGoogle)?`<span class="budget-status-badge ${getBudgetStatus(mtdGoogle,budgetGoogle).cls}">${getBudgetStatus(mtdGoogle,budgetGoogle).label}</span>`:''}
+          <button class="edit-btn" onclick="toggleBudgetEdit('google')">✏️</button>
+        </div>
+      </div>
+      <div class="budget-amount">${sym}${Math.round(budgetGoogle).toLocaleString('he-IL')}</div>
+      <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdGoogle).toLocaleString('he-IL')} (${budgetGoogle>0?(mtdGoogle/budgetGoogle*100).toFixed(0):0}%)</div>
+      ${budgetBarHtml(mtdGoogle,budgetGoogle)}
+      <div id="budget-google-edit" style="display:none;margin-top:10px">
+        <div class="budget-edit-row">
+          <input class="budget-input" id="budget-google-input" type="number" value="${budgetGoogle}" />
+          <button class="save-btn" onclick="saveBudget('google',${c.id})">שמור</button>
+        </div>
+      </div>
+    </div>`:''}
+  </div>`;
+
+  return totalCard + subCards;
+}
+
 function getDateRange(mode) {
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
@@ -807,15 +909,17 @@ function getMonthSpend(clientId, platform=null) {
   return getInsightsForRange(clientId, from, to, platform).spend;
 }
 
-function budgetBarHtml(spent, budget, thick=false) {
+function computeBudgetBarHtml(spent, budget, pace, thick=false, status=null) {
   if (!budget) return '';
-  const pace    = getMonthPace();
   const utilPct = Math.min(100,(spent/budget*100));
   const pacePct = Math.min(100,pace*100);
-  const status  = getBudgetStatus(spent,budget);
+  if (!status) status = getBudgetStatus(spent,budget);
   const fillColor = status?.cls==='over'?'var(--red)':status?.cls==='warn'?'var(--yellow)':status?.cls==='under'?'var(--muted)':'var(--green)';
   if (thick) return `<div class="budget-bar-thick"><div class="budget-bar-thick-fill" style="width:${utilPct}%;background:${fillColor}"></div><div class="budget-bar-thick-pace" style="right:${100-pacePct}%"></div></div>`;
   return `<div class="budget-bar"><div class="budget-bar-fill" style="width:${utilPct}%;background:${fillColor}"></div><div class="budget-bar-pace" style="right:${100-pacePct}%"></div></div>`;
+}
+function budgetBarHtml(spent, budget, thick=false) {
+  return computeBudgetBarHtml(spent, budget, getMonthPace(), thick);
 }
 
 function showOverview() {
@@ -961,20 +1065,19 @@ async function showClient(clientId, dateMode) {
   const { from, to, label } = getDateRange(currentDateMode);
   const sym = cur(c);
   const ins       = getInsightsForRange(c.id, from, to);
-  const mtdMeta   = getMonthSpend(c.id, 'facebook');
+  const cachedMeta = metaSpendCache[c.id];
+  const mtdMeta   = cachedMeta ? cachedMeta.spend_month : 0;
   const mtdGoogle = getMonthSpend(c.id, 'google');
-  const mtdTotal  = mtdMeta + mtdGoogle;
   const budgetMeta   = c.monthly_budget_meta   || 0;
   const budgetGoogle = c.monthly_budget_google  || 0;
-  const budgetTotal  = budgetMeta + budgetGoogle;
   const pace     = getMonthPace();
-  const paceDay  = Math.round(pace * new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate());
   const daysLeft = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate() - new Date().getDate();
 
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(`tab-${clientId}`)?.classList.add('active');
 
-  // ── התראת חריגת תקציב ────────────────────────────────────
+  // ── התראת חריגת תקציב (מבוססת על נתוני Meta שכבר נטענו בהיסטוריית
+  //    הדפדפן הזה - אם עוד לא נטענו, הפופאפ פשוט לא יורה על Meta הפעם) ──
   const overMeta   = budgetMeta   > 0 && (mtdMeta/budgetMeta   - pace) > 0.1;
   const overGoogle = budgetGoogle > 0 && (mtdGoogle/budgetGoogle - pace) > 0.1;
   if (overMeta || overGoogle) {
@@ -1024,53 +1127,7 @@ async function showClient(clientId, dateMode) {
     + '  </div>'
     + '</div></div>';
 
-  const totalCard = budgetTotal>0 ? `
-    <div class="budget-total-card">
-      <div class="budget-total-header">
-        <div class="budget-total-title">💰 סה"כ תקציב חודשי</div>
-        ${getBudgetStatus(mtdTotal,budgetTotal)?`<span class="budget-status-badge ${getBudgetStatus(mtdTotal,budgetTotal).cls}">${getBudgetStatus(mtdTotal,budgetTotal).label}</span>`:''}
-      </div>
-      <div class="budget-total-amount">${sym}${Math.round(mtdTotal).toLocaleString('he-IL')} <span style="font-size:16px;color:var(--muted)">/ ${sym}${Math.round(budgetTotal).toLocaleString('he-IL')}</span></div>
-      <div class="budget-pace-info" style="margin-top:6px">יום ${paceDay} בחודש - אמורים להיות על <span>${(pace*100).toFixed(0)}%</span> | בפועל: <span>${(mtdTotal/budgetTotal*100).toFixed(0)}%</span></div>
-      ${budgetBarHtml(mtdTotal,budgetTotal,true)}
-    </div>` : '';
-
-  const subCards = `<div class="budget-cards">
-    ${c.meta_ad_account_id?`<div class="budget-card">
-      <div class="budget-card-header"><div class="budget-card-title">📘 Meta</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          ${getBudgetStatus(mtdMeta,budgetMeta)?`<span class="budget-status-badge ${getBudgetStatus(mtdMeta,budgetMeta).cls}">${getBudgetStatus(mtdMeta,budgetMeta).label}</span>`:''}
-          <button class="edit-btn" onclick="toggleBudgetEdit('meta')">✏️</button>
-        </div>
-      </div>
-      <div class="budget-amount">${sym}${Math.round(budgetMeta).toLocaleString('he-IL')}</div>
-      <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdMeta).toLocaleString('he-IL')} (${budgetMeta>0?(mtdMeta/budgetMeta*100).toFixed(0):0}%)</div>
-      ${budgetBarHtml(mtdMeta,budgetMeta)}
-      <div id="budget-meta-edit" style="display:none;margin-top:10px">
-        <div class="budget-edit-row">
-          <input class="budget-input" id="budget-meta-input" type="number" value="${budgetMeta}" />
-          <button class="save-btn" onclick="saveBudget('meta',${c.id})">שמור</button>
-        </div>
-      </div>
-    </div>`:''}
-    ${c.google_customer_id?`<div class="budget-card">
-      <div class="budget-card-header"><div class="budget-card-title">🔴 Google</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          ${getBudgetStatus(mtdGoogle,budgetGoogle)?`<span class="budget-status-badge ${getBudgetStatus(mtdGoogle,budgetGoogle).cls}">${getBudgetStatus(mtdGoogle,budgetGoogle).label}</span>`:''}
-          <button class="edit-btn" onclick="toggleBudgetEdit('google')">✏️</button>
-        </div>
-      </div>
-      <div class="budget-amount">${sym}${Math.round(budgetGoogle).toLocaleString('he-IL')}</div>
-      <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdGoogle).toLocaleString('he-IL')} (${budgetGoogle>0?(mtdGoogle/budgetGoogle*100).toFixed(0):0}%)</div>
-      ${budgetBarHtml(mtdGoogle,budgetGoogle)}
-      <div id="budget-google-edit" style="display:none;margin-top:10px">
-        <div class="budget-edit-row">
-          <input class="budget-input" id="budget-google-input" type="number" value="${budgetGoogle}" />
-          <button class="save-btn" onclick="saveBudget('google',${c.id})">שמור</button>
-        </div>
-      </div>
-    </div>`:''}
-  </div>`;
+  const budgetSectionHtml = buildBudgetSectionHtml(c.id);
 
   const camps       = campaigns[clientId] || [];
   const metaCamps   = camps.filter(x => x.platform==='facebook');
@@ -1150,7 +1207,7 @@ async function showClient(clientId, dateMode) {
         </div>
       ` : ''}
     </div>
-    <div class="budget-section">${totalCard}${subCards}</div>
+    <div class="budget-section" id="budget-section-${c.id}">${budgetSectionHtml}</div>
     ${c.meta_ad_account_id ? `<div id="meta-panel-${c.id}" class="chart-card" style="margin-bottom:16px">
       <div style="text-align:center;padding:20px;color:var(--muted);font-family:'Heebo',sans-serif;font-size:13px">⏳ טוען נתוני Meta Ads...</div>
     </div>` : ''}
@@ -1321,10 +1378,23 @@ async function loadMetaPanel(clientId, sym) {
     return;
   }
 
-  const alerts = data.alerts || [];
+  // ── Update the real-spend cache and repaint the top budget card (single
+  //    source of truth: meta_ad_daily via this same fetch) ──────────────
+  metaSpendCache[clientId] = {
+    spend_today: data.spend_today,
+    spend_month: data.spend_month,
+    data_through: data.last_import ? data.last_import.data_through : null
+  };
+  const budgetSectionEl = document.getElementById(`budget-section-${clientId}`);
+  if (budgetSectionEl) budgetSectionEl.innerHTML = buildBudgetSectionHtml(clientId);
+
+  const alerts = data.alerts || []; // active only (open/acknowledged/snoozed) - server-filtered
+  const resolvedAlerts = data.resolved_alerts || [];
   const critical = alerts.filter(a => a.severity === 'critical');
 
-  // ── Banner: only when there's a real critical issue, never for lack of data ──
+  // ── Banner: only when there's a real critical issue, never for lack of data.
+  //    Disappears on its own once every critical alert is checked off, because
+  //    resolved alerts no longer come back in `alerts` on the next load. ──
   if (bannerEl) {
     if (critical.length > 0) {
       bannerEl.innerHTML = `<div style="background:rgba(239,68,68,0.1);border:1px solid var(--red);border-radius:12px;padding:16px 20px;margin-bottom:8px;font-family:'Heebo',sans-serif">
@@ -1335,14 +1405,14 @@ async function loadMetaPanel(clientId, sym) {
             <div style="font-size:12px;color:var(--muted2);margin-top:2px">${a.explanation || ''}</div>
             ${a.recommendation ? `<div style="font-size:12px;color:var(--yellow);margin-top:4px">💡 ${a.recommendation}</div>` : ''}
           </div>`).join('')}
-        ${alerts.length >= 3 ? `<div style="font-size:11px;color:var(--muted)">יתכנו התראות נוספות - ראה פאנל Meta Ads למטה</div>` : ''}
+        ${critical.length > 3 ? `<div style="font-size:11px;color:var(--muted)">ועוד ${critical.length - 3} התראות קריטיות - ראה פאנל Meta Ads למטה</div>` : ''}
       </div>`;
     } else {
       bannerEl.innerHTML = '';
     }
   }
 
-  // ── Inline panel: spend, primary results, freshness, up to 3 alerts ──
+  // ── Inline panel: today's spend, primary results, freshness, alert task list ──
   const li = data.last_import;
   const importLine = li
     ? `נתונים נכונים לתאריך <b>${li.data_through || '-'}</b> · סנכרון אחרון: ${li.imported_at ? new Date(li.imported_at).toLocaleString('he-IL') : '-'} · סטטוס: ${li.status === 'success' ? '✅ הצלחה' : `❌ ${li.status}${li.error_message ? ' - ' + li.error_message : ''}`}`
@@ -1357,16 +1427,30 @@ async function loadMetaPanel(clientId, sym) {
       </div>`).join('')
     : `<div style="color:var(--muted);font-size:12px;padding:8px">אין עדיין מספיק נתונים לניתוח תוצאות</div>`;
 
+  const alertRow = (a, checked) => `
+    <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)${checked?';opacity:0.6':''}">
+      <label style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;flex-shrink:0;margin-top:1px" title="${checked?'בטל סימון':'סמן כטופל'}">
+        <input type="checkbox" ${checked?'checked':''} onchange="toggleAlertResolved(${clientId},${a.id},'${sym}',this.checked)" style="width:16px;height:16px;cursor:pointer" />
+        <span style="font-size:9px;color:var(--muted2)">טופל</span>
+      </label>
+      <span class="budget-status-badge ${a.severity === 'critical' ? 'over' : a.severity === 'warning' ? 'warn' : 'under'}">${META_SEVERITY_LABEL[a.severity] || a.severity}</span>
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px;color:var(--text)${checked?';text-decoration:line-through':''}">${a.title}</div>
+        <div style="font-size:12px;color:var(--muted2);margin-top:2px">${a.explanation || ''}</div>
+      </div>
+    </div>`;
+
   const alertsHtml = alerts.length
-    ? alerts.map(a => `
-      <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">
-        <span class="budget-status-badge ${a.severity === 'critical' ? 'over' : a.severity === 'warning' ? 'warn' : 'under'}">${META_SEVERITY_LABEL[a.severity] || a.severity}</span>
-        <div style="flex:1">
-          <div style="font-weight:600;font-size:13px;color:var(--text)">${a.title}</div>
-          <div style="font-size:12px;color:var(--muted2);margin-top:2px">${a.explanation || ''}</div>
-        </div>
-      </div>`).join('')
+    ? alerts.map(a => alertRow(a, false)).join('')
     : `<div style="display:flex;align-items:center;gap:8px;color:var(--green);font-size:13px;padding:6px 0"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span> לא זוהו בעיות משמעותיות</div>`;
+
+  const resolvedSectionHtml = resolvedAlerts.length ? `
+    <div style="margin-top:10px">
+      <button id="meta-resolved-toggle-${clientId}" onclick="toggleResolvedSection(${clientId})" style="background:transparent;border:none;color:var(--muted2);font-size:12px;cursor:pointer;padding:4px 0;font-family:'Heebo',sans-serif">▸ הצג שטופלו (${resolvedAlerts.length})</button>
+      <div id="meta-resolved-list-${clientId}" style="display:none;margin-top:4px">
+        ${resolvedAlerts.map(a => alertRow(a, true)).join('')}
+      </div>
+    </div>` : '';
 
   panelEl.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -1379,12 +1463,31 @@ async function loadMetaPanel(clientId, sym) {
     <div id="meta-sync-status-${clientId}"></div>
     <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
       <div class="kpi-card" style="padding:14px"><div class="kpi-label">הוצאה היום</div><div class="kpi-val" style="color:var(--accent2);font-size:20px">${sym}${Math.round(data.spend_today).toLocaleString('he-IL')}</div></div>
-      <div class="kpi-card" style="padding:14px"><div class="kpi-label">הוצאה החודש</div><div class="kpi-val" style="color:var(--accent2);font-size:20px">${sym}${Math.round(data.spend_month).toLocaleString('he-IL')}</div></div>
       ${resultsHtml}
     </div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${importLine}</div>
     <div>${alertsHtml}</div>
+    ${resolvedSectionHtml}
   `;
+}
+
+async function toggleAlertResolved(clientId, alertId, sym, resolved) {
+  try {
+    const r = await metaFetch('resolve-alert', { method: 'POST', body: { alert_id: alertId, resolved } });
+    if (!r.ok) showToast('❌ שגיאה בעדכון ההתראה', 'red');
+  } catch (e) {
+    showToast('❌ לא ניתן להתחבר ל-Edge Function', 'red');
+  }
+  await loadMetaPanel(clientId, sym); // reload from the server - confirms the change actually persisted
+}
+
+function toggleResolvedSection(clientId) {
+  const list = document.getElementById(`meta-resolved-list-${clientId}`);
+  const btn  = document.getElementById(`meta-resolved-toggle-${clientId}`);
+  if (!list || !btn) return;
+  const hidden = list.style.display === 'none';
+  list.style.display = hidden ? 'block' : 'none';
+  btn.textContent = btn.textContent.replace(hidden ? '▸' : '▾', hidden ? '▾' : '▸');
 }
 
 async function syncMeta(clientId, sym) {
