@@ -64,6 +64,18 @@ function mergeThresholds(base: typeof DEFAULT_THRESHOLDS, override: unknown) {
   return { ...base, ...(override && typeof override === 'object' ? override : {}) };
 }
 
+// Which evidence_json field represents "how bad is this" for the rule types
+// that have one clean spend number - used to detect a materially larger
+// problem behind a re-matching fingerprint after it was resolved. Rule types
+// not listed here (ratio/percentage-based: creative_gap, cpm_spike,
+// frequency_spike) only re-arm on a new reporting month, never mid-month.
+const RESOLVED_MATERIALITY_SPEND_FIELD: Record<string, string> = {
+  ad_zero_result_burn: 'ad_spend_7d',
+  budget_forecast: 'spend_mtd',
+  tranquilo_ad_not_spending: 'ad_spend_3d',
+  ad_budget_concentration: 'ad_spend_7d'
+};
+
 function isoDaysAgo(dateStr: string, n: number): string {
   const d = new Date(dateStr + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() - n);
@@ -133,21 +145,36 @@ async function upsertAlert(supabase: SupabaseClient, clientId: number, accountId
   const existing = existingRows && existingRows[0];
 
   if (!existing) {
-    // Don't immediately recreate an alert the user just resolved while the
-    // underlying condition is still true - a sync run right after resolving
-    // must not silently reopen it. A short cooldown distinguishes that from
-    // a genuinely new occurrence (e.g. resolved last month, reappeared this
-    // month), which should still surface as a fresh alert.
-    const cooldownSince = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: recentlyResolved } = await supabase
+    // Don't recreate an alert the user resolved while the same condition
+    // still holds - a re-sync with unchanged (or trivially different) data
+    // must never silently reopen it. This is NOT time-based (elapsed days or
+    // "one more sync" must never be the trigger on their own) - it only
+    // reopens on a genuinely new occurrence: a new reporting month, or a
+    // materially larger number behind the same problem (e.g. meaningfully
+    // more wasted spend than when it was resolved).
+    const { data: lastResolvedRows } = await supabase
       .from('meta_alerts')
-      .select('id')
+      .select('id, data_through, evidence_json')
       .eq('client_id', clientId)
       .eq('fingerprint', fingerprint)
       .eq('status', 'resolved')
-      .gte('resolved_at', cooldownSince)
+      .order('resolved_at', { ascending: false })
       .limit(1);
-    if (recentlyResolved && recentlyResolved[0]) return fingerprint;
+    const lastResolved = lastResolvedRows && lastResolvedRows[0];
+    if (lastResolved) {
+      const newPeriod = !lastResolved.data_through || monthStart(dataThrough) !== monthStart(lastResolved.data_through);
+      const spendField = RESOLVED_MATERIALITY_SPEND_FIELD[candidate.rule_type];
+      let materialIncrease = false;
+      if (spendField && candidate.evidence_json && lastResolved.evidence_json) {
+        const newVal = Number(candidate.evidence_json[spendField]) || 0;
+        const oldVal = Number(lastResolved.evidence_json[spendField]) || 0;
+        const delta = newVal - oldVal;
+        // "significant additional spend": at least another min_spend_no_result
+        // worth, or at least 50% more than what was there when resolved.
+        materialIncrease = delta >= DEFAULT_THRESHOLDS.min_spend_no_result || (oldVal > 0 && delta / oldVal >= 0.5);
+      }
+      if (!newPeriod && !materialIncrease) return fingerprint; // same problem, same period - stays resolved
+    }
   }
 
   if (existing) {
