@@ -605,8 +605,17 @@ function buildBudgetSectionHtml(clientId) {
   const budgetGoogle = c.monthly_budget_google || 0;
   const budgetTotal  = budgetMeta + budgetGoogle;
   const pace     = getMonthPace();
-  const paceDay  = Math.round(pace * new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate());
+  const now      = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  const paceDay  = Math.round(pace * daysInMonth);
   const expectedTotal = budgetTotal * pace;
+  // Days remaining including today - "from now on, spend this much per day
+  // to land exactly on budget by month end." Floored at 1 so the last day
+  // of the month still shows a real number instead of dividing by zero.
+  const daysRemaining = Math.max(1, daysInMonth - now.getDate() + 1);
+  const recommendedDailyTotal  = Math.max(0, budgetTotal  - mtdTotal)  / daysRemaining;
+  const recommendedDailyMeta   = Math.max(0, budgetMeta   - mtdMeta)   / daysRemaining;
+  const recommendedDailyGoogle = Math.max(0, budgetGoogle - mtdGoogle) / daysRemaining;
 
   const metaPace     = metaThrough ? paceForDate(metaThrough) : pace;
   const metaForecast = metaThrough ? forecastForDate(mtdMeta, metaThrough) : mtdMeta;
@@ -621,6 +630,7 @@ function buildBudgetSectionHtml(clientId) {
       </div>
       <div class="budget-total-amount">${sym}${Math.round(mtdTotal).toLocaleString('he-IL')} <span style="font-size:16px;color:var(--muted)">/ ${sym}${Math.round(budgetTotal).toLocaleString('he-IL')}</span></div>
       <div class="budget-pace-info" style="margin-top:6px">יום ${paceDay} בחודש - אמורים להיות על <span>${sym}${Math.round(expectedTotal).toLocaleString('he-IL')} (${(pace*100).toFixed(0)}%)</span> | בפועל: <span>${sym}${Math.round(mtdTotal).toLocaleString('he-IL')} (${(mtdTotal/budgetTotal*100).toFixed(0)}%)</span></div>
+      <div class="budget-pace-info" style="margin-top:4px;color:var(--muted2)">תקציב יומי מומלץ מכאן ועד סוף החודש: <span style="color:var(--text);font-weight:700">${sym}${Math.round(recommendedDailyTotal).toLocaleString('he-IL')}</span> ליום (${daysRemaining} ימים נותרו)</div>
       ${budgetBarHtml(mtdTotal,budgetTotal,true)}
     </div>` : '';
 
@@ -638,7 +648,8 @@ function buildBudgetSectionHtml(clientId) {
       ${budgetMeta>0?`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2);margin-top:8px">
         <span>יתרה: ${sym}${Math.round(metaRemaining).toLocaleString('he-IL')}</span>
         <span>${metaThrough?`תחזית לסוף החודש: ${sym}${Math.round(metaForecast).toLocaleString('he-IL')} (נכון ל-${metaThrough})`:'תחזית: טרם נטענו נתונים'}</span>
-      </div>`:''}
+      </div>
+      <div style="font-size:11px;color:var(--muted2);margin-top:4px">תקציב יומי מומלץ: <span style="color:var(--text);font-weight:700">${sym}${Math.round(recommendedDailyMeta).toLocaleString('he-IL')}</span> ליום (${daysRemaining} ימים נותרו)</div>`:''}
       <div id="budget-meta-edit" style="display:none;margin-top:10px">
         <div class="budget-edit-row">
           <input class="budget-input" id="budget-meta-input" type="number" value="${budgetMeta}" />
@@ -656,6 +667,7 @@ function buildBudgetSectionHtml(clientId) {
       <div class="budget-amount">${sym}${Math.round(budgetGoogle).toLocaleString('he-IL')}</div>
       <div class="budget-spent">הוצא החודש: ${sym}${Math.round(mtdGoogle).toLocaleString('he-IL')} (${budgetGoogle>0?(mtdGoogle/budgetGoogle*100).toFixed(0):0}%)</div>
       ${budgetBarHtml(mtdGoogle,budgetGoogle)}
+      ${budgetGoogle>0?`<div style="font-size:11px;color:var(--muted2);margin-top:4px">תקציב יומי מומלץ: <span style="color:var(--text);font-weight:700">${sym}${Math.round(recommendedDailyGoogle).toLocaleString('he-IL')}</span> ליום (${daysRemaining} ימים נותרו)</div>`:''}
       <div id="budget-google-edit" style="display:none;margin-top:10px">
         <div class="budget-edit-row">
           <input class="budget-input" id="budget-google-input" type="number" value="${budgetGoogle}" />
