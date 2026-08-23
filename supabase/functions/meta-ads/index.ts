@@ -68,6 +68,29 @@ function israelDateString(offsetDays = 0): string {
   return new Date(israelMs).toISOString().split('T')[0];
 }
 
+// PostgREST caps a single .select() at 1000 rows by default. A client with
+// enough ads (Asif-Market: 1250+ rows for a 20-day window) silently got a
+// truncated, undercounted spend_month from a single unpaginated query - loop
+// with .range() until a page comes back short.
+async function fetchAllRows(supabase: any, accountIds: string[], monthStart: string, today: string) {
+  const pageSize = 1000;
+  let all: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase.from('meta_ad_daily')
+      .select('day, amount_spent, campaign_id, purchases, messaging_conversations_started, leads')
+      .in('account_id', accountIds)
+      .gte('day', monthStart)
+      .lte('day', today)
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    all = all.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
 async function handleOverview(supabase: any, clientId: number) {
   const { data: mappings, error: mErr } = await supabase
     .from('meta_account_mappings')
@@ -83,12 +106,8 @@ async function handleOverview(supabase: any, clientId: number) {
   const today = israelDateString(0);
   const monthStart = today.slice(0, 7) + '-01';
 
-  const [{ data: monthRows, error: rErr }, { data: lastImport }, { data: activeAlerts }, { data: resolvedAlerts }, { data: configs }] = await Promise.all([
-    supabase.from('meta_ad_daily')
-      .select('day, amount_spent, campaign_id, purchases, messaging_conversations_started, leads')
-      .in('account_id', accountIds)
-      .gte('day', monthStart)
-      .lte('day', today),
+  const [monthRows, { data: lastImport }, { data: activeAlerts }, { data: resolvedAlerts }, { data: configs }] = await Promise.all([
+    fetchAllRows(supabase, accountIds, monthStart, today),
     supabase.from('meta_imports')
       .select('status, data_through, imported_at, row_count, inserted_count, updated_count, error_message')
       .order('imported_at', { ascending: false })
@@ -114,7 +133,6 @@ async function handleOverview(supabase: any, clientId: number) {
       .select('campaign_id, result_type')
       .in('account_id', accountIds)
   ]);
-  if (rErr) throw new Error(rErr.message);
 
   const resultTypeByCampaign = Object.fromEntries((configs || []).map((c: any) => [c.campaign_id, c.result_type]));
 

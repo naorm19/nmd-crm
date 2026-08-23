@@ -54,6 +54,8 @@ const DEFAULT_THRESHOLDS = {
   creative_gap_min_spend: 100,
   ad_concentration_budget_pct: 40,
   ad_concentration_perf_gap_pct: 25,
+  winning_ad_min_spend: 100,       // same floor as creative_gap - below this, "cheap" is just noise
+  winning_ad_outperform_pct: 25,   // ad must beat the campaign's own average cost per result by this much
   freshness_warning_days: 4,
   freshness_critical_days: 6,
   tranquilo_not_spending_ratio: 0.10,
@@ -432,6 +434,59 @@ function ruleAdBudgetConcentration(client: any, accountId: string, campaignRows:
   return out;
 }
 
+// Positive counterpart to ruleAdBudgetConcentration/ruleCreativeGap - those
+// only ever surface a problem (an ad burning budget or a cost gap). Naor
+// asked to also see which ad is actually working well, not just what's
+// broken, so this flags the ad beating its own campaign's average cost per
+// result by a healthy margin as an 'info' alert with a scale-up
+// recommendation, not a warning/critical.
+function ruleWinningAd(client: any, accountId: string, campaignRows: any[], campaignId: string, campaignName: string, resultType: string, thresholds: any, ruleTypes: Set<string>) {
+  const fields = resultFieldFor(resultType);
+  if (!fields) return [];
+  ruleTypes.add('winning_ad');
+
+  const through = (campaignRows as any)._through;
+  const last7 = campaignRows.filter(r => r.day >= isoDaysAgo(through, 6));
+  const byAd: Record<string, any> = {};
+  let campaignSpend = 0, campaignResults = 0;
+  for (const r of last7) {
+    if (!r.ad_id) continue;
+    byAd[r.ad_id] = byAd[r.ad_id] || { ad_name: r.ad_name, spend: 0, results: 0 };
+    byAd[r.ad_id].spend += Number(r.amount_spent) || 0;
+    byAd[r.ad_id].results += Number(r[fields.countField]) || 0;
+    campaignSpend += Number(r.amount_spent) || 0;
+    campaignResults += Number(r[fields.countField]) || 0;
+  }
+  if (campaignResults < thresholds.min_results_for_avg || campaignSpend <= 0) return [];
+  const avgCost = campaignSpend / campaignResults;
+
+  let bestAdId: string | null = null, bestCost = Infinity;
+  for (const [adId, d0] of Object.entries(byAd)) {
+    const d = d0 as any;
+    if (d.results === 0 || d.spend < thresholds.winning_ad_min_spend) continue;
+    const cost = d.spend / d.results;
+    if (cost < bestCost) { bestCost = cost; bestAdId = adId; }
+  }
+  if (!bestAdId) return [];
+
+  const d = byAd[bestAdId];
+  const outperformPct = ((avgCost - bestCost) / avgCost) * 100;
+  if (outperformPct < thresholds.winning_ad_outperform_pct) return [];
+
+  const label = ({ purchase: 'רכישה', message: 'שיחה', lead: 'ליד' } as Record<string, string>)[resultType] || 'תוצאה';
+  return [{
+    severity: 'info', rule_type: 'winning_ad', entity_level: 'ad', entity_id: bestAdId, entity_name: d.ad_name,
+    title: `${client.business_name} / ${d.ad_name}: מודעה מנצחת`,
+    explanation: `המודעה "${d.ad_name}" בקמפיין "${campaignName}" עלתה ${bestCost.toFixed(1)}₪ ל${label} ב-7 הימים האחרונים - זול ב-${outperformPct.toFixed(0)}% מהממוצע בקמפיין (${avgCost.toFixed(1)}₪), עם הוצאה של ${d.spend.toFixed(0)}₪.`,
+    recommendation: 'לשקול הגדלת תקציב למודעה הזו - היא מביאה תוצאות בעלות נמוכה משמעותית מהממוצע.',
+    evidence_json: {
+      campaign_id: campaignId, campaign_name: campaignName, result_type: resultType,
+      ad_spend_7d: Number(d.spend.toFixed(2)), ad_cost_per_result: Number(bestCost.toFixed(2)),
+      campaign_avg_cost_per_result: Number(avgCost.toFixed(2)), outperform_pct: Number(outperformPct.toFixed(1))
+    }
+  }];
+}
+
 function ruleTrendSpike(client: any, accountId: string, campaignRows: any[], campaignId: string, campaignName: string, field: string, ruleType: string, label: string, thresholds: any, ruleTypes: Set<string>) {
   ruleTypes.add(ruleType);
   const through = (campaignRows as any)._through;
@@ -601,6 +656,7 @@ export async function runAnalysis(supabase: SupabaseClient, dataThrough: string)
         candidates.push(...ruleZeroResultBurn(client, mapping.account_id, campaignRows, campaignId, campaignName, resultType, thresholds, ruleTypesEvaluated));
         candidates.push(...ruleCreativeGap(client, mapping.account_id, campaignRows, campaignId, campaignName, resultType, thresholds, ruleTypesEvaluated));
         candidates.push(...ruleAdBudgetConcentration(client, mapping.account_id, campaignRows, campaignId, campaignName, resultType, thresholds, ruleTypesEvaluated));
+        candidates.push(...ruleWinningAd(client, mapping.account_id, campaignRows, campaignId, campaignName, resultType, thresholds, ruleTypesEvaluated));
       }
 
       candidates.push(...ruleTrendSpike(client, mapping.account_id, campaignRows, campaignId, campaignName, 'cpm', 'cpm_spike', 'CPM', thresholds, ruleTypesEvaluated));

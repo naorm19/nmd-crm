@@ -606,6 +606,7 @@ function buildBudgetSectionHtml(clientId) {
   const budgetTotal  = budgetMeta + budgetGoogle;
   const pace     = getMonthPace();
   const paceDay  = Math.round(pace * new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate());
+  const expectedTotal = budgetTotal * pace;
 
   const metaPace     = metaThrough ? paceForDate(metaThrough) : pace;
   const metaForecast = metaThrough ? forecastForDate(mtdMeta, metaThrough) : mtdMeta;
@@ -619,7 +620,7 @@ function buildBudgetSectionHtml(clientId) {
         ${getBudgetStatus(mtdTotal,budgetTotal)?`<span class="budget-status-badge ${getBudgetStatus(mtdTotal,budgetTotal).cls}">${getBudgetStatus(mtdTotal,budgetTotal).label}</span>`:''}
       </div>
       <div class="budget-total-amount">${sym}${Math.round(mtdTotal).toLocaleString('he-IL')} <span style="font-size:16px;color:var(--muted)">/ ${sym}${Math.round(budgetTotal).toLocaleString('he-IL')}</span></div>
-      <div class="budget-pace-info" style="margin-top:6px">יום ${paceDay} בחודש - אמורים להיות על <span>${(pace*100).toFixed(0)}%</span> | בפועל: <span>${(mtdTotal/budgetTotal*100).toFixed(0)}%</span></div>
+      <div class="budget-pace-info" style="margin-top:6px">יום ${paceDay} בחודש - אמורים להיות על <span>${sym}${Math.round(expectedTotal).toLocaleString('he-IL')} (${(pace*100).toFixed(0)}%)</span> | בפועל: <span>${sym}${Math.round(mtdTotal).toLocaleString('he-IL')} (${(mtdTotal/budgetTotal*100).toFixed(0)}%)</span></div>
       ${budgetBarHtml(mtdTotal,budgetTotal,true)}
     </div>` : '';
 
@@ -850,7 +851,23 @@ async function supaPatch(path, params='', body={}) {
 let clients = [], allInsights = [], campaigns = {};
 
 async function loadData() {
-  const allClients = await supaFetch('clients', '?is_active=eq.true');
+  const clientFields = [
+    'id',
+    'business_name',
+    'meta_ad_account_id',
+    'google_customer_id',
+    'currency',
+    'timezone',
+    'monthly_budget_meta',
+    'monthly_budget_google',
+    'is_active',
+    'created_at',
+    'updated_at',
+    'goal_type',
+    'meta_page_id',
+    'clarity_project_id'
+  ].join(',');
+  const allClients = await supaFetch('clients', `?is_active=eq.true&select=${clientFields}`);
   const order = ['דני ספרים', 'אסיף', 'מקור השפע', 'Aero Duct Prime', 'בורקס אמא', 'שחר אהרוני', 'קאסה קליניק'];
   clients = [
     ...order.map(name => allClients.find(c => c.business_name === name)).filter(Boolean),
@@ -1185,6 +1202,7 @@ async function showClient(clientId, dateMode) {
   ${datePicker}
 </div>
     ${c.meta_ad_account_id ? `<div id="meta-banner-${c.id}"></div>` : ''}
+    ${c.google_customer_id ? `<div id="google-gap-banner-${c.id}"></div>` : ''}
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">הוצאה כוללת</div><div class="kpi-val" style="color:var(--accent2)">${sym}${Math.round(ins.spend).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
@@ -1329,6 +1347,29 @@ async function showClient(clientId, dateMode) {
   if (c.business_name === 'מקור השפע') await loadNewCustomersInline(c.id, from, to);
   if (c.business_name === 'דני ספרים') renderDaniSales(c.id, from, to, sym);
   if (c.meta_ad_account_id) loadMetaPanel(c.id, sym);
+  if (c.google_customer_id) loadGoogleGapBanner(c.id, sym);
+}
+
+// ── Google Ads data-gap banner (freshness-check.js writes to `alerts`
+//    when daily_insights falls behind real Google Ads spend - this just
+//    surfaces the most recent one so it's not invisible in the DB) ──────
+async function loadGoogleGapBanner(clientId, sym) {
+  const bannerEl = document.getElementById(`google-gap-banner-${clientId}`);
+  if (!bannerEl) return;
+  const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  let data;
+  try {
+    data = await supaFetch('alerts',
+      `?client_id=eq.${clientId}&type=eq.google_data_gap&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc&limit=3`);
+  } catch (e) {
+    bannerEl.innerHTML = '';
+    return;
+  }
+  if (!data || data.length === 0) { bannerEl.innerHTML = ''; return; }
+  bannerEl.innerHTML = `<div style="background:rgba(239,68,68,0.1);border:1px solid var(--red);border-radius:12px;padding:16px 20px;margin-bottom:8px;font-family:'Heebo',sans-serif">
+    <div style="font-weight:800;color:var(--red);margin-bottom:8px;font-size:14px">🚨 פער בנתוני Google Ads</div>
+    ${data.map(a => `<div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(239,68,68,0.2);font-size:13px;color:var(--text)">${a.message}</div>`).join('')}
+  </div>`;
 }
 
 // ── Meta Ads panel (new pipeline: meta_ad_daily / meta_alerts, via the
