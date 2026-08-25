@@ -1484,6 +1484,11 @@ async function loadMetaPanel(clientId, sym) {
     return;
   }
 
+  // Everything below only builds/writes HTML from `data` - wrapped so a
+  // rendering bug (like the campaign/adset hierarchy refactor briefly
+  // breaking this on 2026-08-25) shows an error instead of leaving the
+  // panel stuck on "⏳ טוען..." forever with no visible failure.
+  try {
   // ── Update the real-spend cache and repaint the top budget card (single
   //    source of truth: meta_ad_daily via this same fetch) ──────────────
   metaSpendCache[clientId] = {
@@ -1568,6 +1573,10 @@ async function loadMetaPanel(clientId, sym) {
     </div>
   `;
   metaChatShowQuickBtns(clientId);
+  } catch (e) {
+    console.error('[loadMetaPanel render]', e);
+    panelEl.innerHTML = `<div style="padding:16px;color:var(--red);font-size:12px;font-family:'Heebo',sans-serif">📘 Meta Ads: שגיאה בהצגת הנתונים (${e.message}) - הנתונים עצמם נטענו תקין, זו בעיית תצוגה. <button onclick="loadMetaPanel(${clientId}, '${sym}')" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:2px 8px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif">↻ נסה שוב</button></div>`;
+  }
 }
 
 function severityBadgeClass(sev) {
@@ -1634,9 +1643,6 @@ function historyRow(clientId, a, sym) {
   </div>`;
 }
 
-// Groups active alerts by entity (campaign/adset/ad/account), sorted
-// campaign -> adset -> ad -> account, and naturally within each level (so
-// "2 | BOF" sorts before "10 | ..." instead of alphabetically as text).
 // Which campaign an alert belongs to, for the top level of the hierarchy.
 // Works directly for campaign-level alerts; for adset/ad-level alerts it
 // relies on evidence_json.campaign_name (set by the MCP breakdown scripts -
@@ -1761,7 +1767,7 @@ function buildMetaAlertsBlockHtml(clientId, sym) {
       </div>
     </div>` : '';
 
-  return `${filterHtml}${groups.length ? groupsHtml : emptyHtml}${snoozedHtml}${resolvedHtml}`;
+  return `${filterHtml}${campaigns.length ? groupsHtml : emptyHtml}${snoozedHtml}${resolvedHtml}`;
 }
 
 function setAlertFilter(clientId, sym, value) {
