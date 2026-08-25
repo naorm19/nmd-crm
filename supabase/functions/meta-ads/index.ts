@@ -106,33 +106,63 @@ async function handleOverview(supabase: any, clientId: number) {
   const today = israelDateString(0);
   const monthStart = today.slice(0, 7) + '-01';
 
-  const [monthRows, { data: lastImport }, { data: activeAlerts }, { data: resolvedAlerts }, { data: configs }] = await Promise.all([
+  const ALERT_FIELDS = 'id, severity, title, explanation, recommendation, entity_level, entity_id, entity_name, evidence_json, data_through, last_detected_at, acknowledged_at, resolved_at, snoozed_until, status';
+
+  const [monthRows, { data: lastImport }, { data: openOrSnoozed }, { data: closedAlerts }, { data: configs }] = await Promise.all([
     fetchAllRows(supabase, accountIds, monthStart, today),
     supabase.from('meta_imports')
       .select('status, data_through, imported_at, row_count, inserted_count, updated_count, error_message')
       .order('imported_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
-    // Full active list - the panel renders these as a checkable task list,
-    // not just a 3-item preview (that cap is applied client-side, only for
-    // the top-of-page critical banner).
+    // 'open' alerts plus every 'snoozed' one (split into active-again vs
+    // still-waiting below, by comparing snoozed_until to now here in code -
+    // simpler and more portable than a compound .or() filter).
     supabase.from('meta_alerts')
-      .select('id, severity, title, explanation, recommendation, entity_name, data_through, last_detected_at, status')
+      .select(ALERT_FIELDS)
       .eq('client_id', clientId)
-      .in('status', ['open', 'acknowledged', 'snoozed'])
+      .in('status', ['open', 'snoozed'])
       .order('severity', { ascending: true })
       .order('last_detected_at', { ascending: false }),
-    // Collapsed "show resolved" section - capped, most recent first.
+    // Collapsed "show handled" section (resolved + not-relevant) - capped,
+    // most recent first.
     supabase.from('meta_alerts')
-      .select('id, severity, title, explanation, recommendation, entity_name, data_through, resolved_at, status')
+      .select(ALERT_FIELDS)
       .eq('client_id', clientId)
-      .eq('status', 'resolved')
-      .order('resolved_at', { ascending: false })
-      .limit(20),
+      .in('status', ['resolved', 'acknowledged'])
+      .order('last_detected_at', { ascending: false })
+      .limit(30),
     supabase.from('meta_analysis_config')
       .select('campaign_id, result_type')
       .in('account_id', accountIds)
   ]);
+
+  // Split 'snoozed' by whether the reminder date has actually arrived yet.
+  // A resurfaced one gets a trend badge if we captured a comparable metric
+  // when it was snoozed (see evidence_json.snoozed_snapshot, set by the
+  // 'snooze' action below) - never fabricated when the shape isn't there.
+  const nowIso = new Date().toISOString();
+  const activeAlerts: any[] = [];
+  const stillSnoozed: any[] = [];
+  for (const a of (openOrSnoozed || [])) {
+    if (a.status === 'snoozed' && a.snoozed_until && a.snoozed_until > nowIso) {
+      stillSnoozed.push(a);
+      continue;
+    }
+    const snap = a.evidence_json?.snoozed_snapshot;
+    if (a.status === 'snoozed' && snap && typeof snap.primary_metric === 'number' && typeof a.evidence_json?.primary_metric === 'number') {
+      const now = a.evidence_json.primary_metric;
+      const before = snap.primary_metric;
+      const lowerIsBetter = snap.lower_is_better !== false; // default true (most metrics here are costs)
+      const delta = now - before;
+      a.trend = Math.abs(delta) < 1e-9 ? 'unchanged' : (lowerIsBetter ? delta < 0 : delta > 0) ? 'improved' : 'worsened';
+      a.trend_from = before;
+      a.trend_to = now;
+      a.trend_label = snap.primary_metric_label || null;
+    }
+    activeAlerts.push(a);
+  }
+  const resolvedAlerts = closedAlerts || [];
 
   const resultTypeByCampaign = Object.fromEntries((configs || []).map((c: any) => [c.campaign_id, c.result_type]));
 
@@ -168,24 +198,55 @@ async function handleOverview(supabase: any, clientId: number) {
     unclassified_spend_mtd: Number(unclassifiedSpend.toFixed(2)),
     primary_results: primaryResults,
     last_import: lastImport || null,
-    alerts: activeAlerts || [],
-    resolved_alerts: resolvedAlerts || []
+    alerts: activeAlerts,
+    snoozed_alerts: stillSnoozed,
+    resolved_alerts: resolvedAlerts
   };
 }
 
-async function handleResolveAlert(supabase: any, alertId: number, resolved: boolean) {
-  const patch = resolved
-    ? { status: 'resolved', resolved_at: new Date().toISOString() }
-    : { status: 'open', resolved_at: null };
+// action: 'resolve' (טופל) | 'not_relevant' (לא רלוונטי) | 'snooze' (המשך
+// מעקב, requires snooze_days) | 'reopen' (undo any of the above, back to
+// the active task list).
+const VALID_ALERT_ACTIONS = new Set(['resolve', 'not_relevant', 'snooze', 'reopen']);
+
+async function handleUpdateAlertStatus(supabase: any, alertId: number, action: string, snoozeDays: number | null) {
+  if (!VALID_ALERT_ACTIONS.has(action)) throw new Error(`Invalid action: ${action}`);
+
+  const now = new Date().toISOString();
+  let patch: Record<string, unknown>;
+
+  if (action === 'resolve') {
+    patch = { status: 'resolved', resolved_at: now, acknowledged_at: null, snoozed_until: null };
+  } else if (action === 'not_relevant') {
+    patch = { status: 'acknowledged', acknowledged_at: now, resolved_at: null, snoozed_until: null };
+  } else if (action === 'reopen') {
+    patch = { status: 'open', resolved_at: null, acknowledged_at: null, snoozed_until: null };
+  } else {
+    // 'snooze' - capture the current evidence_json as a comparison snapshot
+    // BEFORE overwriting anything, so "trend since snooze" has something to
+    // diff against once the reminder fires. Never fabricated: only stored
+    // when evidence_json.primary_metric already exists on this alert.
+    if (!snoozeDays || snoozeDays <= 0) throw new Error('snooze_days must be a positive number');
+    const { data: current, error: readErr } = await supabase
+      .from('meta_alerts').select('evidence_json').eq('id', alertId).maybeSingle();
+    if (readErr) throw new Error(readErr.message);
+    const evidence = current?.evidence_json || {};
+    const nextEvidence = typeof evidence.primary_metric === 'number'
+      ? { ...evidence, snoozed_snapshot: { primary_metric: evidence.primary_metric, primary_metric_label: evidence.primary_metric_label || null, lower_is_better: evidence.lower_is_better !== false, snoozed_at: now } }
+      : evidence;
+    const until = new Date(Date.now() + snoozeDays * 86400000).toISOString();
+    patch = { status: 'snoozed', snoozed_until: until, resolved_at: null, acknowledged_at: null, evidence_json: nextEvidence };
+  }
+
   const { data, error } = await supabase
     .from('meta_alerts')
     .update(patch)
     .eq('id', alertId)
-    .select('id, status')
+    .select('id, status, snoozed_until')
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new Error('Alert not found');
-  return { ok: true, id: data.id, status: data.status };
+  return { ok: true, id: data.id, status: data.status, snoozed_until: data.snoozed_until };
 }
 
 async function handleSync(supabase: any) {
@@ -279,7 +340,11 @@ Deno.serve(async (req: Request) => {
       const body = await req.json().catch(() => ({}));
       const alertId = parseInt(body.alert_id, 10);
       if (!Number.isInteger(alertId)) return json({ error: 'Invalid alert_id' }, 400, origin);
-      const data = await handleResolveAlert(supabase, alertId, !!body.resolved);
+      // action defaults to 'resolve' for backward compatibility with the old
+      // { resolved: true/false } shape (resolved:false === 'reopen').
+      const alertAction = typeof body.action === 'string' ? body.action : (body.resolved === false ? 'reopen' : 'resolve');
+      const snoozeDays = Number.isFinite(body.snooze_days) ? Number(body.snooze_days) : null;
+      const data = await handleUpdateAlertStatus(supabase, alertId, alertAction, snoozeDays);
       return json(data, 200, origin);
     }
 

@@ -587,6 +587,16 @@ function metaBudgetStatus(spend, budget, forecast, pace) {
 // loadMetaPanel() from the real meta_ad_daily-backed Edge Function, the
 // single source of truth for Meta spend across the dashboard.
 let metaSpendCache = {};
+// clientId -> last overview payload (alerts/snoozed_alerts/resolved_alerts) -
+// kept so the campaign/adset filter dropdown can re-render instantly without
+// re-fetching the Edge Function on every filter change.
+let metaAlertsCache = {};
+// clientId -> currently selected filter value ('all' or an entity group key)
+let metaAlertFilter = {};
+
+const ENTITY_LEVEL_LABEL = { campaign: 'קמפיין', adset: 'אדסט', ad: 'מודעה', account: 'חשבון' };
+const ENTITY_LEVEL_RANK  = { campaign: 0, adset: 1, ad: 2, account: 3 };
+function entityGroupKey(a) { return `${a.entity_level || 'other'}::${a.entity_name || '-'}`; }
 
 // Builds the "הוצאה כוללת" KPI card. Self-contained so it can be called
 // both on initial client-page render and again after the async Meta fetch
@@ -1488,8 +1498,8 @@ async function loadMetaPanel(clientId, sym) {
   const totalSpendKpiEl = document.getElementById(`total-spend-kpi-${clientId}`);
   if (totalSpendKpiEl) totalSpendKpiEl.innerHTML = buildTotalSpendKpiHtml(clientId, currentDateMode);
 
-  const alerts = data.alerts || []; // active only (open/acknowledged/snoozed) - server-filtered
-  const resolvedAlerts = data.resolved_alerts || [];
+  metaAlertsCache[clientId] = data; // alerts / snoozed_alerts / resolved_alerts - re-used by the filter dropdown
+  const alerts = data.alerts || []; // active task list - server already excludes still-snoozed and closed ones
   const critical = alerts.filter(a => a.severity === 'critical');
 
   // ── Banner: only when there's a real critical issue, never for lack of data.
@@ -1527,31 +1537,6 @@ async function loadMetaPanel(clientId, sym) {
       </div>`).join('')
     : `<div style="color:var(--muted);font-size:12px;padding:8px">אין עדיין מספיק נתונים לניתוח תוצאות</div>`;
 
-  const alertRow = (a, checked) => `
-    <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)${checked?';opacity:0.6':''}">
-      <label style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;flex-shrink:0;margin-top:1px" title="${checked?'בטל סימון':'סמן כטופל'}">
-        <input type="checkbox" ${checked?'checked':''} onchange="toggleAlertResolved(${clientId},${a.id},'${sym}',this.checked)" style="width:16px;height:16px;cursor:pointer" />
-        <span style="font-size:9px;color:var(--muted2)">טופל</span>
-      </label>
-      <span class="budget-status-badge ${a.severity === 'critical' ? 'over' : a.severity === 'warning' ? 'warn' : 'under'}">${META_SEVERITY_LABEL[a.severity] || a.severity}</span>
-      <div style="flex:1">
-        <div style="font-weight:600;font-size:13px;color:var(--text)${checked?';text-decoration:line-through':''}">${a.title}</div>
-        <div style="font-size:12px;color:var(--muted2);margin-top:2px">${a.explanation || ''}</div>
-      </div>
-    </div>`;
-
-  const alertsHtml = alerts.length
-    ? alerts.map(a => alertRow(a, false)).join('')
-    : `<div style="display:flex;align-items:center;gap:8px;color:var(--green);font-size:13px;padding:6px 0"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span> לא זוהו בעיות משמעותיות</div>`;
-
-  const resolvedSectionHtml = resolvedAlerts.length ? `
-    <div style="margin-top:10px">
-      <button id="meta-resolved-toggle-${clientId}" onclick="toggleResolvedSection(${clientId})" style="background:transparent;border:none;color:var(--muted2);font-size:12px;cursor:pointer;padding:4px 0;font-family:'Heebo',sans-serif">▸ הצג שטופלו (${resolvedAlerts.length})</button>
-      <div id="meta-resolved-list-${clientId}" style="display:none;margin-top:4px">
-        ${resolvedAlerts.map(a => alertRow(a, true)).join('')}
-      </div>
-    </div>` : '';
-
   panelEl.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px">📘 Meta Ads</span>
@@ -1566,28 +1551,193 @@ async function loadMetaPanel(clientId, sym) {
       ${resultsHtml}
     </div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${importLine}</div>
-    <div>${alertsHtml}</div>
-    ${resolvedSectionHtml}
+    <div id="meta-alerts-block-${clientId}">${buildMetaAlertsBlockHtml(clientId, sym)}</div>
   `;
 }
 
-async function toggleAlertResolved(clientId, alertId, sym, resolved) {
+function severityBadgeClass(sev) {
+  return sev === 'critical' ? 'over' : sev === 'warning' ? 'warn' : 'ok'; // info == good news -> green
+}
+
+function trendBadgeHtml(a) {
+  if (!a.trend) return '';
+  const map = {
+    improved:  { icon: '📈', label: 'השתפר',     color: 'var(--green)' },
+    worsened:  { icon: '📉', label: 'החמיר',      color: 'var(--red)' },
+    unchanged: { icon: '➖', label: 'ללא שינוי',  color: 'var(--muted2)' }
+  };
+  const t = map[a.trend];
+  if (!t) return '';
+  const fmt = n => Number(n).toLocaleString('he-IL', { maximumFractionDigits: 2 });
+  const detail = (a.trend_from != null && a.trend_to != null)
+    ? ` (${a.trend_label ? a.trend_label + ': ' : ''}${fmt(a.trend_from)} ← ${fmt(a.trend_to)})` : '';
+  return `<div style="font-size:11px;color:${t.color};margin-top:3px">${t.icon} מאז "המשך מעקב": ${t.label}${detail}</div>`;
+}
+
+function alertActionsHtml(clientId, a, sym) {
+  return `<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;max-width:150px">
+    <button title="טופל" onclick="setAlertStatus(${clientId},${a.id},'${sym}','resolve')" style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:var(--green);padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;white-space:nowrap">✓ טופל</button>
+    <button title="לא רלוונטי" onclick="setAlertStatus(${clientId},${a.id},'${sym}','not_relevant')" style="background:rgba(100,116,139,0.12);border:1px solid rgba(100,116,139,0.3);color:var(--muted2);padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;white-space:nowrap">✕ לא רלוונטי</button>
+    <button title="המשך מעקב" onclick="openSnoozeMenu(${clientId},${a.id},'${sym}',event)" style="background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);color:var(--accent2);padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;white-space:nowrap">🔔 המשך מעקב</button>
+  </div>`;
+}
+
+function alertRow(clientId, a, sym) {
+  return `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">
+    <span class="budget-status-badge ${severityBadgeClass(a.severity)}">${META_SEVERITY_LABEL[a.severity] || a.severity}</span>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:13px;color:var(--text)">${a.title}</div>
+      <div style="font-size:12px;color:var(--muted2);margin-top:2px">${a.explanation || ''}</div>
+      ${a.recommendation ? `<div style="font-size:12px;color:var(--yellow);margin-top:3px">💡 ${a.recommendation}</div>` : ''}
+      ${trendBadgeHtml(a)}
+    </div>
+    ${alertActionsHtml(clientId, a, sym)}
+  </div>`;
+}
+
+function snoozedRow(clientId, a, sym) {
+  const until = a.snoozed_until ? new Date(a.snoozed_until).toLocaleDateString('he-IL') : '-';
+  return `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">
+    <span class="budget-status-badge ${severityBadgeClass(a.severity)}">${META_SEVERITY_LABEL[a.severity] || a.severity}</span>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:13px;color:var(--text)">${a.title}</div>
+      <div style="font-size:11px;color:var(--accent2);margin-top:2px">🔔 יחזור להיות פעיל ב-${until}</div>
+    </div>
+    <button onclick="setAlertStatus(${clientId},${a.id},'${sym}','reopen')" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;white-space:nowrap">↺ הפעל עכשיו</button>
+  </div>`;
+}
+
+function historyRow(clientId, a, sym) {
+  const isResolved = a.status === 'resolved';
+  const when = isResolved ? a.resolved_at : a.acknowledged_at;
+  const label = `${isResolved ? '✓ טופל' : '✕ לא רלוונטי'}${when ? ' · ' + new Date(when).toLocaleDateString('he-IL') : ''}`;
+  return `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);opacity:0.65">
+    <span class="budget-status-badge ${isResolved ? 'ok' : 'under'}">${label}</span>
+    <span class="budget-status-badge ${severityBadgeClass(a.severity)}">${META_SEVERITY_LABEL[a.severity] || a.severity}</span>
+    <div style="flex:1"><div style="font-weight:600;font-size:13px;color:var(--text);text-decoration:line-through">${a.title}</div></div>
+    <button onclick="setAlertStatus(${clientId},${a.id},'${sym}','reopen')" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;white-space:nowrap">↺ פתח מחדש</button>
+  </div>`;
+}
+
+// Groups active alerts by entity (campaign/adset/ad/account), sorted
+// campaign -> adset -> ad -> account, and naturally within each level (so
+// "2 | BOF" sorts before "10 | ..." instead of alphabetically as text).
+function groupAndSortAlerts(alerts) {
+  const groups = new Map();
+  for (const a of alerts) {
+    const key = entityGroupKey(a);
+    if (!groups.has(key)) groups.set(key, { key, entity_level: a.entity_level, entity_name: a.entity_name, items: [] });
+    groups.get(key).items.push(a);
+  }
+  const arr = [...groups.values()];
+  const sevRank = { critical: 0, warning: 1, info: 2 };
+  arr.forEach(g => g.items.sort((x, y) => (sevRank[x.severity] ?? 9) - (sevRank[y.severity] ?? 9)));
+  arr.sort((x, y) => {
+    const r = (ENTITY_LEVEL_RANK[x.entity_level] ?? 9) - (ENTITY_LEVEL_RANK[y.entity_level] ?? 9);
+    if (r !== 0) return r;
+    return (x.entity_name || '').localeCompare(y.entity_name || '', 'he', { numeric: true });
+  });
+  return arr;
+}
+
+function buildMetaAlertsBlockHtml(clientId, sym) {
+  const data = metaAlertsCache[clientId];
+  if (!data) return '';
+  const alerts = data.alerts || [];
+  const snoozedWaiting = data.snoozed_alerts || [];
+  const resolvedAlerts = data.resolved_alerts || [];
+  const filter = metaAlertFilter[clientId] || 'all';
+
+  const groups = groupAndSortAlerts(alerts);
+  const filterHtml = groups.length > 1 ? `
+    <select onchange="setAlertFilter(${clientId},'${sym}',this.value)" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;font-family:'Heebo',sans-serif;margin-bottom:10px">
+      <option value="all" ${filter === 'all' ? 'selected' : ''}>הכל קמפיינים/אדסטים (${alerts.length})</option>
+      ${groups.map(g => `<option value="${g.key}" ${filter === g.key ? 'selected' : ''}>${ENTITY_LEVEL_LABEL[g.entity_level] || g.entity_level}: ${g.entity_name} (${g.items.length})</option>`).join('')}
+    </select>` : '';
+
+  const visibleGroups = filter === 'all' ? groups : groups.filter(g => g.key === filter);
+  const groupsHtml = visibleGroups.map(g => `
+    <div style="margin-bottom:2px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.3px;margin:10px 0 2px">${ENTITY_LEVEL_LABEL[g.entity_level] || g.entity_level} · ${g.entity_name}</div>
+      ${g.items.map(a => alertRow(clientId, a, sym)).join('')}
+    </div>`).join('');
+
+  const emptyHtml = `<div style="display:flex;align-items:center;gap:8px;color:var(--green);font-size:13px;padding:6px 0"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span> לא זוהו בעיות משמעותיות</div>`;
+
+  const snoozedHtml = snoozedWaiting.length ? `
+    <div style="margin-top:10px">
+      <button id="meta-snoozed-toggle-${clientId}" onclick="toggleCollapsible('meta-snoozed-list-${clientId}',this)" style="background:transparent;border:none;color:var(--muted2);font-size:12px;cursor:pointer;padding:4px 0;font-family:'Heebo',sans-serif">▸ בהמתנה (${snoozedWaiting.length})</button>
+      <div id="meta-snoozed-list-${clientId}" style="display:none;margin-top:4px">
+        ${snoozedWaiting.map(a => snoozedRow(clientId, a, sym)).join('')}
+      </div>
+    </div>` : '';
+
+  const resolvedHtml = resolvedAlerts.length ? `
+    <div style="margin-top:10px">
+      <button id="meta-resolved-toggle-${clientId}" onclick="toggleCollapsible('meta-resolved-list-${clientId}',this)" style="background:transparent;border:none;color:var(--muted2);font-size:12px;cursor:pointer;padding:4px 0;font-family:'Heebo',sans-serif">▸ הצג טופלו / לא רלוונטי (${resolvedAlerts.length})</button>
+      <div id="meta-resolved-list-${clientId}" style="display:none;margin-top:4px">
+        ${resolvedAlerts.map(a => historyRow(clientId, a, sym)).join('')}
+      </div>
+    </div>` : '';
+
+  return `${filterHtml}${groups.length ? groupsHtml : emptyHtml}${snoozedHtml}${resolvedHtml}`;
+}
+
+function setAlertFilter(clientId, sym, value) {
+  metaAlertFilter[clientId] = value;
+  const el = document.getElementById(`meta-alerts-block-${clientId}`);
+  if (el) el.innerHTML = buildMetaAlertsBlockHtml(clientId, sym);
+}
+
+function toggleCollapsible(listId, btn) {
+  const list = document.getElementById(listId);
+  if (!list) return;
+  const hidden = list.style.display === 'none';
+  list.style.display = hidden ? 'block' : 'none';
+  btn.textContent = btn.textContent.replace(hidden ? '▸' : '▾', hidden ? '▾' : '▸');
+}
+
+function closeSnoozeMenu() {
+  const el = document.getElementById('snooze-menu-popover');
+  if (el) el.remove();
+  document.removeEventListener('click', closeSnoozeMenuOnClickOutside);
+}
+function closeSnoozeMenuOnClickOutside(e) {
+  const el = document.getElementById('snooze-menu-popover');
+  if (el && !el.contains(e.target)) closeSnoozeMenu();
+}
+function openSnoozeMenu(clientId, alertId, sym, event) {
+  event.stopPropagation();
+  closeSnoozeMenu();
+  const rect = event.currentTarget.getBoundingClientRect();
+  const menu = document.createElement('div');
+  menu.id = 'snooze-menu-popover';
+  menu.style.cssText = `position:fixed;top:${rect.bottom + 6}px;left:${Math.max(8, rect.left - 60)}px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);padding:6px;z-index:5000;display:flex;flex-direction:column;gap:2px;min-width:150px`;
+  const opts = [[3, '3 ימים'], [7, 'שבוע'], [14, 'שבועיים']];
+  menu.innerHTML = opts.map(([days, label]) =>
+    `<button onclick="snoozeAlert(${clientId},${alertId},'${sym}',${days})" style="background:transparent;border:none;color:var(--text);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;text-align:right;font-family:'Heebo',sans-serif">🔔 הזכר לי בעוד ${label}</button>`
+  ).join('');
+  document.body.appendChild(menu);
+  setTimeout(() => document.addEventListener('click', closeSnoozeMenuOnClickOutside), 0);
+}
+async function snoozeAlert(clientId, alertId, sym, days) {
+  closeSnoozeMenu();
   try {
-    const r = await metaFetch('resolve-alert', { method: 'POST', body: { alert_id: alertId, resolved } });
+    const r = await metaFetch('resolve-alert', { method: 'POST', body: { alert_id: alertId, action: 'snooze', snooze_days: days } });
     if (!r.ok) showToast('❌ שגיאה בעדכון ההתראה', 'red');
   } catch (e) {
     showToast('❌ לא ניתן להתחבר ל-Edge Function', 'red');
   }
-  await loadMetaPanel(clientId, sym); // reload from the server - confirms the change actually persisted
+  await loadMetaPanel(clientId, sym);
 }
-
-function toggleResolvedSection(clientId) {
-  const list = document.getElementById(`meta-resolved-list-${clientId}`);
-  const btn  = document.getElementById(`meta-resolved-toggle-${clientId}`);
-  if (!list || !btn) return;
-  const hidden = list.style.display === 'none';
-  list.style.display = hidden ? 'block' : 'none';
-  btn.textContent = btn.textContent.replace(hidden ? '▸' : '▾', hidden ? '▾' : '▸');
+async function setAlertStatus(clientId, alertId, sym, action) {
+  try {
+    const r = await metaFetch('resolve-alert', { method: 'POST', body: { alert_id: alertId, action } });
+    if (!r.ok) showToast('❌ שגיאה בעדכון ההתראה', 'red');
+  } catch (e) {
+    showToast('❌ לא ניתן להתחבר ל-Edge Function', 'red');
+  }
+  await loadMetaPanel(clientId, sym);
 }
 
 async function syncMeta(clientId, sym) {
