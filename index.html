@@ -724,6 +724,8 @@ let perfChartClient = null;
 let perfChartFrom   = null;
 let perfChartTo     = null;
 let perfChartSym    = '₪';
+let perfChartShowSpend = false;
+let perfChartShowCpl   = false;
 let customFrom = '';
 let customTo = '';
 
@@ -1312,6 +1314,10 @@ async function showClient(clientId, dateMode) {
         <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;">📈 גרף ביצועים - ${label}</span>
         <div style="display:flex;gap:8px;align-items:center">
           ${c.business_name==='Aero Duct Prime'?`<div id="aeroDuct-src-filter"></div>`:''}
+          ${c.goal_type==='sales'?`<div style="display:flex;gap:10px;align-items:center;font-size:11px;color:var(--muted2);font-family:'Heebo',sans-serif;">
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none"><input type="checkbox" id="perf-metric-spend" onchange="togglePerfMetric('spend')" style="cursor:pointer">הוצאה</label>
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none"><input type="checkbox" id="perf-metric-cpl" onchange="togglePerfMetric('cpl')" style="cursor:pointer">עלות למכירה</label>
+          </div>`:''}
           <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px">
             <button id="perf-period-daily" onclick="setPerfPeriod('daily')" style="padding:3px 10px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#3b82f6;color:#fff;transition:all 0.2s">יומי</button>
             <button id="perf-period-monthly" onclick="setPerfPeriod('monthly')" style="padding:3px 10px;font-size:11px;font-family:'Heebo',sans-serif;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--muted2);transition:all 0.2s">חודשי</button>
@@ -1577,13 +1583,30 @@ function renderChart(c, from, to, sym) {
   perfChartSym    = sym;
   // Reset to daily on every new client/date load
   perfChartPeriod = 'daily';
+  perfChartShowSpend = false;
+  perfChartShowCpl   = false;
   ['daily','monthly','yearly'].forEach(p => {
     const btn = document.getElementById(`perf-period-${p}`);
     if (!btn) return;
     btn.style.background = p === 'daily' ? '#3b82f6' : 'transparent';
     btn.style.color      = p === 'daily' ? '#fff'    : 'var(--muted2)';
   });
+  _syncPerfMetricCheckboxes();
   _drawPerfChart();
+}
+
+function togglePerfMetric(metric) {
+  if (metric === 'spend') perfChartShowSpend = !perfChartShowSpend;
+  if (metric === 'cpl')   perfChartShowCpl   = !perfChartShowCpl;
+  _syncPerfMetricCheckboxes();
+  _drawPerfChart();
+}
+
+function _syncPerfMetricCheckboxes() {
+  const spendBox = document.getElementById('perf-metric-spend');
+  const cplBox   = document.getElementById('perf-metric-cpl');
+  if (spendBox) spendBox.checked = perfChartShowSpend;
+  if (cplBox)   cplBox.checked   = perfChartShowCpl;
 }
 
 function setPerfPeriod(period) {
@@ -1641,22 +1664,37 @@ function _drawPerfChart() {
   const isSales = c.goal_type === 'sales';
   const showLeadsInstead = ['קאסה קליניק','שחר אהרוני'].includes(c.business_name);
 
-  const datasets = showLeadsInstead ? [
-    { label:'כמות לידים', data:keys.map(k=>map[k].leads||0), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.12)', tension:0.3, fill:true, yAxisID:'y', pointRadius:3, pointHoverRadius:6 },
-    { label:goalLabel(c,'cpl')+' ('+sym+')', data:keys.map(k=>map[k].leads>0?(map[k].spend/map[k].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
-  ] : [
-    { label:'הוצאה ('+sym+')', data:keys.map(k=>map[k].spend.toFixed(0)), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.3, fill:true, yAxisID:'y' },
-    { label:goalLabel(c,'cpl')+' ('+sym+')', data:keys.map(k=>map[k].leads>0?(map[k].spend/map[k].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true }
-  ];
+  const spendDataset = { label:'הוצאה ('+sym+')', data:keys.map(k=>map[k].spend.toFixed(0)), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.3, fill:true, yAxisID:'y' };
+  const cplDataset   = { label:goalLabel(c,'cpl')+' ('+sym+')', data:keys.map(k=>map[k].leads>0?(map[k].spend/map[k].leads).toFixed(0):null), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', tension:0.3, fill:false, yAxisID:'y1', spanGaps:true };
+
+  let datasets;
+  let showY1;
   if (isSales) {
-    datasets.push({ label:'ערך מכירות ('+sym+')', data:keys.map(k=>(map[k].conversion_value||0).toFixed(0)), borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.1)', tension:0.3, fill:false, yAxisID:'y', spanGaps:true });
-    datasets.push({ label:'כמות מכירות', data:keys.map(k=>(map[k].conversions||0)), borderColor:'#a855f7', backgroundColor:'rgba(168,85,247,0.08)', tension:0.3, fill:false, yAxisID:'yCount', spanGaps:true, borderDash:[5,4], pointRadius:4 });
+    datasets = [
+      { label:'ערך מכירות ('+sym+')', data:keys.map(k=>(map[k].conversion_value||0).toFixed(0)), borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.1)', tension:0.3, fill:false, yAxisID:'y', spanGaps:true },
+      { label:'כמות מכירות', data:keys.map(k=>(map[k].conversions||0)), borderColor:'#a855f7', backgroundColor:'rgba(168,85,247,0.08)', tension:0.3, fill:false, yAxisID:'yCount', spanGaps:true, borderDash:[5,4], pointRadius:4 }
+    ];
+    if (perfChartShowSpend) datasets.push(spendDataset);
+    if (perfChartShowCpl)   datasets.push(cplDataset);
+    showY1 = perfChartShowCpl;
+  } else if (showLeadsInstead) {
+    datasets = [
+      { label:'כמות לידים', data:keys.map(k=>map[k].leads||0), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.12)', tension:0.3, fill:true, yAxisID:'y', pointRadius:3, pointHoverRadius:6 },
+      cplDataset
+    ];
+    showY1 = true;
+  } else {
+    datasets = [ spendDataset, cplDataset ];
+    showY1 = true;
   }
+
   const scales = {
     x:{ ticks:{ color:'#64748b' }, grid:{ color:'#1e2d45' } },
-    y:{ type:'linear', position:'right', ticks:{ color:'#60a5fa', callback: v => showLeadsInstead ? Math.round(v)+' לידים' : sym+Number(v).toLocaleString('he-IL') }, grid:{ color:'#1e2d45' } },
-    y1:{ type:'linear', position:'left', ticks:{ color:'#f59e0b', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ drawOnChartArea:false } }
+    y:{ type:'linear', position:'right', ticks:{ color:'#60a5fa', callback: v => showLeadsInstead ? Math.round(v)+' לידים' : sym+Number(v).toLocaleString('he-IL') }, grid:{ color:'#1e2d45' } }
   };
+  if (showY1) {
+    scales.y1 = { type:'linear', position:'left', ticks:{ color:'#f59e0b', callback:v=>sym+Number(v).toLocaleString('he-IL') }, grid:{ drawOnChartArea:false } };
+  }
   if (isSales) {
     scales.yCount = { type:'linear', position:'left', ticks:{ color:'#a855f7', callback:v=>Math.round(v)+' יח׳' }, grid:{ drawOnChartArea:false } };
   }
