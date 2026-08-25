@@ -1725,18 +1725,18 @@ function buildMetaAlertsBlockHtml(clientId, sym) {
   // its own nested sub-header so campaign -> adset is visually a real
   // hierarchy, not a flat list of same-looking rows.
   const groupsHtml = visibleCampaigns.map(c => `
-    <div style="border:1px solid var(--border);border-radius:10px;background:var(--surface2);margin-bottom:14px;overflow:hidden">
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(59,130,246,0.09);border-bottom:1px solid var(--border)">
-        <span style="font-size:10px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.3px;background:rgba(59,130,246,0.15);padding:2px 8px;border-radius:20px">קמפיין</span>
-        <span style="font-size:14px;font-weight:800;color:var(--text)">${c.label}</span>
+    <div style="border:1px solid var(--border);border-right:4px solid var(--accent);border-radius:10px;background:var(--surface2);margin-bottom:28px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.18)">
+      <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:rgba(59,130,246,0.12);border-bottom:1px solid var(--border)">
+        <span style="font-size:10px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.3px;background:rgba(59,130,246,0.18);padding:2px 8px;border-radius:20px">קמפיין</span>
+        <span style="font-size:15px;font-weight:800;color:var(--text)">${c.label}</span>
       </div>
-      <div style="padding:2px 14px">
+      <div style="padding:2px 16px">
         ${c.direct.map(a => alertRow(clientId, a, sym)).join('')}
       </div>
       ${c.adsetList.map(g => `
-        <div style="margin:0 14px 10px;border-top:1px dashed var(--border);padding-top:8px">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
-            <span style="font-size:9px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.3px;background:var(--surface);border:1px solid var(--border);padding:1px 7px;border-radius:20px">אדגרופ</span>
+        <div style="margin:0 16px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px 2px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="font-size:9px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.3px;background:var(--surface2);border:1px solid var(--border);padding:1px 7px;border-radius:20px">אדגרופ</span>
             <span style="font-size:12px;font-weight:700;color:var(--muted2)">${g.label}</span>
           </div>
           ${g.items.map(a => alertRow(clientId, a, sym)).join('')}
