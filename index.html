@@ -588,6 +588,30 @@ function metaBudgetStatus(spend, budget, forecast, pace) {
 // single source of truth for Meta spend across the dashboard.
 let metaSpendCache = {};
 
+// Builds the "הוצאה כוללת" KPI card. Self-contained so it can be called
+// both on initial client-page render and again after the async Meta fetch
+// resolves (loadMetaPanel patches #total-spend-kpi-<id>), same pattern as
+// buildBudgetSectionHtml right below. Combines Google (daily_insights, any
+// range) with Meta (metaSpendCache, today/month only - see
+// getMetaSpendForMode) and shows a visible caveat instead of a silently
+// Google-only number whenever the selected range can't include Meta yet.
+function buildTotalSpendKpiHtml(clientId, mode) {
+  const c = clients.find(x => x.id === clientId);
+  if (!c) return '';
+  const sym = cur(c);
+  const { from, to, label } = getDateRange(mode);
+  const googleSpend = getInsightsForRange(clientId, from, to).spend;
+  const metaSpend = c.meta_ad_account_id ? getMetaSpendForMode(clientId, mode) : null;
+  const hasMeta = c.meta_ad_account_id && metaSpend !== null;
+  const total = googleSpend + (hasMeta ? metaSpend : 0);
+  const sub = !c.meta_ad_account_id
+    ? label
+    : hasMeta
+      ? `${label} · כולל Meta + Google`
+      : `${label} · Google בלבד — Meta לא נכלל בטווח הזה`;
+  return `<div class="kpi-card"><div class="kpi-label">הוצאה כוללת</div><div class="kpi-val" style="color:var(--accent2)">${sym}${Math.round(total).toLocaleString('he-IL')}</div><div class="kpi-sub"${hasMeta?'':' style="color:var(--yellow)"'}>${sub}</div></div>`;
+}
+
 // Builds the top-of-page budget section (combined total + per-platform
 // cards). Self-contained so it can be called both on initial client-page
 // render and again after the async Meta fetch resolves, to patch
@@ -940,6 +964,20 @@ function getMonthSpend(clientId, platform=null) {
   return getInsightsForRange(clientId, from, to, platform).spend;
 }
 
+// Meta spend for the currently selected date-range mode, or null when we
+// don't have an exact number for that range. metaSpendCache only carries
+// spend_today and spend_month (from the Edge Function's overview action) -
+// not an arbitrary range - so "הוצאה כוללת" can only honestly include Meta
+// for the 'today' and 'month' presets. Every other range shows Google-only
+// with a visible caveat rather than a silently wrong combined total.
+function getMetaSpendForMode(clientId, mode) {
+  const cached = metaSpendCache[clientId];
+  if (!cached) return null;
+  if (mode === 'today') return cached.spend_today ?? null;
+  if (mode === 'month') return cached.spend_month ?? null;
+  return null;
+}
+
 function computeBudgetBarHtml(spent, budget, pace, thick=false, status=null) {
   if (!budget) return '';
   const utilPct = Math.min(100,(spent/budget*100));
@@ -1159,6 +1197,7 @@ async function showClient(clientId, dateMode) {
     + '</div></div>';
 
   const budgetSectionHtml = buildBudgetSectionHtml(c.id);
+  const totalSpendKpiHtml = buildTotalSpendKpiHtml(c.id, currentDateMode);
 
   const camps       = campaigns[clientId] || [];
   const metaCamps   = camps.filter(x => x.platform==='facebook');
@@ -1218,7 +1257,7 @@ async function showClient(clientId, dateMode) {
     ${c.meta_ad_account_id ? `<div id="meta-banner-${c.id}"></div>` : ''}
     ${c.google_customer_id ? `<div id="google-gap-banner-${c.id}"></div>` : ''}
     <div class="kpi-grid">
-      <div class="kpi-card"><div class="kpi-label">הוצאה כוללת</div><div class="kpi-val" style="color:var(--accent2)">${sym}${Math.round(ins.spend).toLocaleString('he-IL')}</div><div class="kpi-sub">${label}</div></div>
+      <div id="total-spend-kpi-${c.id}">${totalSpendKpiHtml}</div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'cpl')}</div><div class="kpi-val" style="color:var(--yellow)">${cpl}</div><div class="kpi-sub">${label}</div></div>
 
@@ -1446,6 +1485,8 @@ async function loadMetaPanel(clientId, sym) {
   };
   const budgetSectionEl = document.getElementById(`budget-section-${clientId}`);
   if (budgetSectionEl) budgetSectionEl.innerHTML = buildBudgetSectionHtml(clientId);
+  const totalSpendKpiEl = document.getElementById(`total-spend-kpi-${clientId}`);
+  if (totalSpendKpiEl) totalSpendKpiEl.innerHTML = buildTotalSpendKpiHtml(clientId, currentDateMode);
 
   const alerts = data.alerts || []; // active only (open/acknowledged/snoozed) - server-filtered
   const resolvedAlerts = data.resolved_alerts || [];
