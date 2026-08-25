@@ -2922,12 +2922,11 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
       <div class="kpi-card">
         <div class="kpi-label">לקוחות חדשים</div>
         <div class="kpi-val" style="color:var(--green)">${totalCount.toLocaleString('he-IL')}</div>
-        <div class="kpi-sub" style="display:flex;flex-direction:column;gap:3px">${label}${trendHtml?`<span>${trendHtml}</span>`:''}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">לקוחות חדשים — חודש שעבר</div>
-        <div class="kpi-val" style="color:var(--muted2)">${prevCount.toLocaleString('he-IL')}</div>
-        <div class="kpi-sub">${prevFrom.substring(0,7)} (חודש שלם)</div>
+        <div class="kpi-sub" style="display:flex;flex-direction:column;gap:3px">
+          <span>${label}</span>
+          ${trendHtml?`<span>${trendHtml}</span>`:''}
+          <span style="color:var(--muted2)">חודש שעבר (${prevFrom.substring(0,7)}): ${prevCount.toLocaleString('he-IL')}</span>
+        </div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">ערך הזמנות</div>
