@@ -1674,9 +1674,14 @@ function buildMetaAlertsBlockHtml(clientId, sym) {
 
   const visibleGroups = filter === 'all' ? groups : groups.filter(g => g.key === filter);
   const groupsHtml = visibleGroups.map(g => `
-    <div style="margin-bottom:2px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.3px;margin:10px 0 2px">${ENTITY_LEVEL_LABEL[g.entity_level] || g.entity_level} · ${g.entity_name}</div>
-      ${g.items.map(a => alertRow(clientId, a, sym)).join('')}
+    <div style="border:1px solid var(--border);border-radius:10px;background:var(--surface2);margin-bottom:14px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:rgba(59,130,246,0.06);border-bottom:1px solid var(--border)">
+        <span style="font-size:10px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.3px;background:rgba(59,130,246,0.12);padding:2px 8px;border-radius:20px">${ENTITY_LEVEL_LABEL[g.entity_level] || g.entity_level}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--text)">${g.entity_name}</span>
+      </div>
+      <div style="padding:2px 14px">
+        ${g.items.map(a => alertRow(clientId, a, sym)).join('')}
+      </div>
     </div>`).join('');
 
   const emptyHtml = `<div style="display:flex;align-items:center;gap:8px;color:var(--green);font-size:13px;padding:6px 0"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span> לא זוהו בעיות משמעותיות</div>`;
