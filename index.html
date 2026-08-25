@@ -593,6 +593,10 @@ let metaSpendCache = {};
 let metaAlertsCache = {};
 // clientId -> currently selected filter value ('all' or an entity group key)
 let metaAlertFilter = {};
+// clientId -> bool, whether the whole Meta Ads panel is collapsed. Persisted
+// across re-renders (loadMetaPanel rebuilds the panel's innerHTML on every
+// refresh/sync) so collapsing it doesn't pop back open on the next reload.
+let metaPanelCollapsed = {};
 
 const ENTITY_LEVEL_LABEL = { campaign: 'קמפיין', adset: 'אדסט', ad: 'מודעה', account: 'חשבון' };
 
@@ -1531,43 +1535,37 @@ async function loadMetaPanel(clientId, sym) {
     ? `נתונים נכונים לתאריך <b>${li.data_through || '-'}</b> · סנכרון אחרון: ${li.imported_at ? new Date(li.imported_at).toLocaleString('he-IL') : '-'} · סטטוס: ${li.status === 'success' ? '✅ הצלחה' : `❌ ${li.status}${li.error_message ? ' - ' + li.error_message : ''}`}`
     : 'טרם בוצע סנכרון נתוני Meta עבור לקוח זה';
 
-  const resultsHtml = (data.primary_results || []).length
-    ? data.primary_results.map(r => `
-      <div class="kpi-card" style="padding:14px">
-        <div class="kpi-label">${r.label}${r.count !== null ? '' : ' (ללא מדד תוצאה יחיד)'}</div>
-        <div class="kpi-val" style="color:var(--accent2);font-size:20px">${r.count !== null ? r.count : (sym + Math.round(r.spend_mtd).toLocaleString('he-IL'))}</div>
-        <div class="kpi-sub">${r.cost_per_result !== null ? `עלות לתוצאה: ${sym}${r.cost_per_result.toLocaleString('he-IL')}` : `הוצאה החודש: ${sym}${Math.round(r.spend_mtd).toLocaleString('he-IL')}`}</div>
-      </div>`).join('')
-    : `<div style="color:var(--muted);font-size:12px;padding:8px">אין עדיין מספיק נתונים לניתוח תוצאות</div>`;
 
+  const collapsed = !!metaPanelCollapsed[clientId];
   panelEl.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px">📘 Meta Ads</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;${collapsed ? '' : 'margin-bottom:14px'}">
+      <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleMetaPanelCollapse(${clientId})" title="${collapsed ? 'הרחב' : 'מזער'}">
+        <span id="meta-panel-chevron-${clientId}" style="color:var(--muted);font-size:12px;transition:transform 0.2s;display:inline-block;transform:rotate(${collapsed ? '-90deg' : '0deg'})">▼</span>
+        <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px">📘 Meta Ads</span>
+      </div>
       <div style="display:flex;gap:8px">
-        <button id="meta-sync-btn-${clientId}" onclick="syncMeta(${clientId}, '${sym}')" style="background:var(--accent);border:none;color:#fff;padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;font-weight:600">🔄 סנכרון Meta</button>
-        <button onclick="loadMetaPanel(${clientId}, '${sym}')" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif">↻ רענן</button>
+        <button id="meta-sync-btn-${clientId}" onclick="event.stopPropagation();syncMeta(${clientId}, '${sym}')" style="background:var(--accent);border:none;color:#fff;padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;font-weight:600">🔄 סנכרון Meta</button>
+        <button onclick="event.stopPropagation();loadMetaPanel(${clientId}, '${sym}')" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif">↻ רענן</button>
       </div>
     </div>
-    <div id="meta-sync-status-${clientId}"></div>
-    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
-      <div class="kpi-card" style="padding:14px"><div class="kpi-label">הוצאה היום</div><div class="kpi-val" style="color:var(--accent2);font-size:20px">${sym}${Math.round(data.spend_today).toLocaleString('he-IL')}</div></div>
-      ${resultsHtml}
-    </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${importLine}</div>
-    <div id="meta-alerts-block-${clientId}">${buildMetaAlertsBlockHtml(clientId, sym)}</div>
-    <div class="clarity-chat" id="meta-chat-${clientId}" style="margin-top:16px">
-      <div class="clarity-chat-header" onclick="toggleMetaChat(${clientId})">
-        <h3>💬 שאל על נתוני Meta <span class="clarity-badge">30 יום</span></h3>
-        <span id="meta-chat-chevron-${clientId}" style="color:var(--muted);font-size:12px;transition:transform 0.2s">▼</span>
-      </div>
-      <div class="clarity-chat-body" id="meta-chat-body-${clientId}" style="display:none">
-        <div id="meta-chat-messages-${clientId}" class="clarity-messages"></div>
-        <div id="meta-chat-quick-${clientId}" class="clarity-quick-btns"></div>
-        <div class="clarity-input-row">
-          <input class="clarity-input" id="meta-chat-input-${clientId}"
-            placeholder="שאל שאלה — למה קמפיין X יקר? מה הכי משתלם?"
-            onkeydown="if(event.key==='Enter') sendMetaChatMsg(${clientId})" />
-          <button class="clarity-send-btn" onclick="sendMetaChatMsg(${clientId})">שלח ›</button>
+    <div id="meta-panel-body-${clientId}" style="display:${collapsed ? 'none' : 'block'}">
+      <div id="meta-sync-status-${clientId}"></div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${importLine}</div>
+      <div id="meta-alerts-block-${clientId}">${buildMetaAlertsBlockHtml(clientId, sym)}</div>
+      <div class="clarity-chat" id="meta-chat-${clientId}" style="margin-top:16px">
+        <div class="clarity-chat-header" onclick="toggleMetaChat(${clientId})">
+          <h3>💬 שאל על נתוני Meta <span class="clarity-badge">30 יום</span></h3>
+          <span id="meta-chat-chevron-${clientId}" style="color:var(--muted);font-size:12px;transition:transform 0.2s">▼</span>
+        </div>
+        <div class="clarity-chat-body" id="meta-chat-body-${clientId}" style="display:none">
+          <div id="meta-chat-messages-${clientId}" class="clarity-messages"></div>
+          <div id="meta-chat-quick-${clientId}" class="clarity-quick-btns"></div>
+          <div class="clarity-input-row">
+            <input class="clarity-input" id="meta-chat-input-${clientId}"
+              placeholder="שאל שאלה — למה קמפיין X יקר? מה הכי משתלם?"
+              onkeydown="if(event.key==='Enter') sendMetaChatMsg(${clientId})" />
+            <button class="clarity-send-btn" onclick="sendMetaChatMsg(${clientId})">שלח ›</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1577,6 +1575,14 @@ async function loadMetaPanel(clientId, sym) {
     console.error('[loadMetaPanel render]', e);
     panelEl.innerHTML = `<div style="padding:16px;color:var(--red);font-size:12px;font-family:'Heebo',sans-serif">📘 Meta Ads: שגיאה בהצגת הנתונים (${e.message}) - הנתונים עצמם נטענו תקין, זו בעיית תצוגה. <button onclick="loadMetaPanel(${clientId}, '${sym}')" style="background:transparent;border:1px solid var(--border);color:var(--muted2);padding:2px 8px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif">↻ נסה שוב</button></div>`;
   }
+}
+
+function toggleMetaPanelCollapse(clientId) {
+  metaPanelCollapsed[clientId] = !metaPanelCollapsed[clientId];
+  const body = document.getElementById(`meta-panel-body-${clientId}`);
+  const chevron = document.getElementById(`meta-panel-chevron-${clientId}`);
+  if (body) body.style.display = metaPanelCollapsed[clientId] ? 'none' : 'block';
+  if (chevron) chevron.style.transform = metaPanelCollapsed[clientId] ? 'rotate(-90deg)' : 'rotate(0deg)';
 }
 
 function severityBadgeClass(sev) {
