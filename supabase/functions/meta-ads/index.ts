@@ -1,6 +1,6 @@
 // ============================================================
 //  Meta Ads Edge Function
-//  Actions: auth-check | overview | sync | resolve-alert
+//  Actions: auth-check | overview | sync | resolve-alert | chat
 //
 //  This is the ONLY way the public dashboard (GitHub Pages,
 //  static HTML with an anon key baked into the page source)
@@ -249,6 +249,95 @@ async function handleUpdateAlertStatus(supabase: any, alertId: number, action: s
   return { ok: true, id: data.id, status: data.status, snoozed_until: data.snoozed_until };
 }
 
+// ── Meta Ads chat (Groq/Llama, Meta data only) ────────────────────────
+// Runs from the Edge Function (not files1/sync-server.js) on purpose -
+// sync-server.js only runs on Naor's PC, and the whole point of moving
+// Meta endpoints to an Edge Function (see file header) was to stop the
+// dashboard depending on that. Requires a GROQ_API_KEY secret on this
+// function (separate manual step - not auto-injected like the service
+// role key).
+async function buildMetaChatContext(supabase: any, clientId: number) {
+  const { data: client } = await supabase.from('clients').select('id, business_name').eq('id', clientId).single();
+  const { data: mappings } = await supabase.from('meta_account_mappings').select('account_id').eq('client_id', clientId).eq('active', true);
+  const accountIds = (mappings || []).map((m: any) => m.account_id);
+  if (accountIds.length === 0) return { client, campaigns: [], alerts: [] };
+
+  const today = israelDateString(0);
+  const from30 = israelDateString(-30);
+  const rows = await fetchAllRows(supabase, accountIds, from30, today) as any[];
+  // fetchAllRows only selects the columns the budget/spend math needs -
+  // campaign_name/purchases aren't in there, so pull those directly here
+  // instead of widening that shared helper for one caller.
+  const { data: detailRows } = await supabase.from('meta_ad_daily')
+    .select('campaign_name, amount_spent, purchases, leads, messaging_conversations_started')
+    .in('account_id', accountIds).gte('day', from30).lte('day', today);
+
+  const byCampaign: Record<string, { spend: number; purchases: number; leads: number; messages: number }> = {};
+  for (const r of (detailRows || [])) {
+    const name = r.campaign_name || 'לא ידוע';
+    byCampaign[name] = byCampaign[name] || { spend: 0, purchases: 0, leads: 0, messages: 0 };
+    byCampaign[name].spend += Number(r.amount_spent) || 0;
+    byCampaign[name].purchases += Number(r.purchases) || 0;
+    byCampaign[name].leads += Number(r.leads) || 0;
+    byCampaign[name].messages += Number(r.messaging_conversations_started) || 0;
+  }
+  const campaigns = Object.entries(byCampaign)
+    .map(([name, d]) => ({
+      name, spend: Number(d.spend.toFixed(2)), purchases: d.purchases, leads: d.leads, messages: d.messages,
+      cost_per_purchase: d.purchases > 0 ? Number((d.spend / d.purchases).toFixed(2)) : null
+    }))
+    .sort((a, b) => b.spend - a.spend)
+    .slice(0, 15);
+
+  const { data: alerts } = await supabase.from('meta_alerts')
+    .select('severity, title, explanation, recommendation, entity_name, status')
+    .eq('client_id', clientId)
+    .in('status', ['open', 'snoozed'])
+    .order('severity', { ascending: true })
+    .limit(15);
+
+  return { client, campaigns, alerts: alerts || [] };
+}
+
+async function handleMetaChat(supabase: any, clientId: number, message: string, history: Array<{ role: string; content: string }>) {
+  const groqKey = Deno.env.get('GROQ_API_KEY');
+  if (!groqKey) throw new Error('GROQ_API_KEY not configured on this Edge Function');
+
+  const ctx = await buildMetaChatContext(supabase, clientId);
+  if (!ctx.client) throw new Error('לקוח לא נמצא');
+
+  const compact = {
+    לקוח: ctx.client.business_name,
+    חלון: '30 יום אחרונים',
+    קמפיינים: ctx.campaigns.map(c => ({
+      שם: c.name, הוצאה: c.spend, רכישות: c.purchases,
+      ...(c.cost_per_purchase !== null ? { עלות_לרכישה: c.cost_per_purchase } : {}),
+      ...(c.leads ? { לידים: c.leads } : {}), ...(c.messages ? { שיחות: c.messages } : {})
+    })),
+    התראות_פתוחות: ctx.alerts.map(a => ({ חומרה: a.severity, כותרת: a.title, ישות: a.entity_name, המלצה: a.recommendation }))
+  };
+
+  const systemPrompt = `אתה עוזר לניתוח Meta Ads של "${ctx.client.business_name}" (30 יום אחרונים). ענה בעברית, קצר וממוקד, על סמך הנתונים בלבד - אל תמציא מספרים שלא מופיעים כאן. אם נשאלת על משהו שלא קיים בנתונים, תגיד שאין מספיק מידע.
+נתונים: ${JSON.stringify(compact)}`;
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.slice(-10).map(h => ({ role: h.role, content: h.content })),
+    { role: 'user', content: message }
+  ];
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 700, messages })
+  });
+  if (!res.ok) throw new Error(`Groq API error: ${res.status}`);
+  const data = await res.json();
+  const reply = data.choices?.[0]?.message?.content;
+  if (!reply) throw new Error('Groq returned no reply');
+  return { reply };
+}
+
 async function handleSync(supabase: any) {
   const rows = await fetchSheetRows();
   const { jsonRows, minDay, maxDay, summarySkipped, rowCount } = buildRowsFromSheetRows(rows);
@@ -348,7 +437,19 @@ Deno.serve(async (req: Request) => {
       return json(data, 200, origin);
     }
 
-    return json({ error: 'Unknown or missing action. Use auth-check | overview | sync | resolve-alert.' }, 400, origin);
+    if (action === 'chat') {
+      if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405, origin);
+      const body = await req.json().catch(() => ({}));
+      const clientId = parseInt(body.client_id, 10);
+      const message = typeof body.message === 'string' ? body.message.trim() : '';
+      const history = Array.isArray(body.history) ? body.history : [];
+      if (!Number.isInteger(clientId)) return json({ error: 'Invalid client_id' }, 400, origin);
+      if (!message) return json({ error: 'Empty message' }, 400, origin);
+      const data = await handleMetaChat(supabase, clientId, message, history);
+      return json(data, 200, origin);
+    }
+
+    return json({ error: 'Unknown or missing action. Use auth-check | overview | sync | resolve-alert | chat.' }, 400, origin);
   } catch (e) {
     console.error('[meta-ads]', e instanceof Error ? e.message : String(e));
     return json({ error: e instanceof Error ? e.message : 'Internal error' }, 500, origin);

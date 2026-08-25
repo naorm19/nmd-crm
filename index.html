@@ -1552,7 +1552,24 @@ async function loadMetaPanel(clientId, sym) {
     </div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${importLine}</div>
     <div id="meta-alerts-block-${clientId}">${buildMetaAlertsBlockHtml(clientId, sym)}</div>
+    <div class="clarity-chat" id="meta-chat-${clientId}" style="margin-top:16px">
+      <div class="clarity-chat-header" onclick="toggleMetaChat(${clientId})">
+        <h3>💬 שאל על נתוני Meta <span class="clarity-badge">30 יום</span></h3>
+        <span id="meta-chat-chevron-${clientId}" style="color:var(--muted);font-size:12px;transition:transform 0.2s">▼</span>
+      </div>
+      <div class="clarity-chat-body" id="meta-chat-body-${clientId}" style="display:none">
+        <div id="meta-chat-messages-${clientId}" class="clarity-messages"></div>
+        <div id="meta-chat-quick-${clientId}" class="clarity-quick-btns"></div>
+        <div class="clarity-input-row">
+          <input class="clarity-input" id="meta-chat-input-${clientId}"
+            placeholder="שאל שאלה — למה קמפיין X יקר? מה הכי משתלם?"
+            onkeydown="if(event.key==='Enter') sendMetaChatMsg(${clientId})" />
+          <button class="clarity-send-btn" onclick="sendMetaChatMsg(${clientId})">שלח ›</button>
+        </div>
+      </div>
+    </div>
   `;
+  metaChatShowQuickBtns(clientId);
 }
 
 function severityBadgeClass(sev) {
@@ -1738,6 +1755,81 @@ async function setAlertStatus(clientId, alertId, sym, action) {
     showToast('❌ לא ניתן להתחבר ל-Edge Function', 'red');
   }
   await loadMetaPanel(clientId, sym);
+}
+
+// ── Meta Ads chat (same UI pattern as the Clarity chat, but talks to the
+//    meta-ads Edge Function's `chat` action - Groq/Llama, Meta data only,
+//    runs from the cloud so it works without Naor's PC being on) ────────
+const metaChatHistory = {}; // { clientId: [{role,content},...] }
+let   metaChatLoading = {}; // { clientId: bool }
+
+function toggleMetaChat(clientId) {
+  const body = document.getElementById(`meta-chat-body-${clientId}`);
+  const chevron = document.getElementById(`meta-chat-chevron-${clientId}`);
+  if (!body) return;
+  const hidden = body.style.display === 'none';
+  body.style.display = hidden ? 'block' : 'none';
+  if (chevron) chevron.style.transform = hidden ? 'rotate(180deg)' : 'rotate(0deg)';
+}
+
+function metaChatAddMsg(clientId, text, cls) {
+  const box = document.getElementById(`meta-chat-messages-${clientId}`);
+  if (!box) return;
+  const loading = box.querySelector('.loading');
+  if (loading) loading.remove();
+  const div = document.createElement('div');
+  div.className = `clarity-msg ${cls}`;
+  div.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function metaChatShowQuickBtns(clientId) {
+  const box = document.getElementById(`meta-chat-quick-${clientId}`);
+  if (!box) return;
+  const qs = [
+    'מה הקמפיין הכי יקר?',
+    'איזה קמפיין הכי משתלם?',
+    'מה יש להתראות פתוחות עכשיו?',
+    'מה מומלץ לעשות השבוע?'
+  ];
+  box.innerHTML = qs.map(q => `<button class="clarity-quick-btn" onclick="metaChatSendText(${clientId},\`${q}\`)">${q}</button>`).join('');
+}
+
+function sendMetaChatMsg(clientId) {
+  const inp = document.getElementById(`meta-chat-input-${clientId}`);
+  const txt = inp.value.trim();
+  if (!txt || metaChatLoading[clientId]) return;
+  inp.value = '';
+  metaChatSendText(clientId, txt);
+}
+
+async function metaChatSendText(clientId, text) {
+  if (metaChatLoading[clientId]) return;
+  metaChatLoading[clientId] = true;
+
+  const sendBtn = document.querySelector(`#meta-chat-${clientId} .clarity-send-btn`);
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '...'; }
+
+  metaChatAddMsg(clientId, text, 'user');
+  metaChatAddMsg(clientId, '⏳ חושב...', 'bot loading');
+
+  try {
+    const history = metaChatHistory[clientId] || [];
+    const r = await metaFetch('chat', { method: 'POST', body: { client_id: clientId, message: text, history } });
+    if (!r.ok || r.data.error) {
+      metaChatAddMsg(clientId, `❌ ${r.data.error || 'שגיאה'}`, 'bot');
+    } else {
+      metaChatHistory[clientId] = [...history, { role: 'user', content: text }, { role: 'assistant', content: r.data.reply }];
+      if (metaChatHistory[clientId].length > 20) metaChatHistory[clientId] = metaChatHistory[clientId].slice(-20);
+      metaChatAddMsg(clientId, r.data.reply, 'bot');
+    }
+  } catch (e) {
+    metaChatAddMsg(clientId, '❌ שגיאת תקשורת עם השרת.', 'bot');
+  }
+
+  metaChatLoading[clientId] = false;
+  if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'שלח ›'; }
 }
 
 async function syncMeta(clientId, sym) {
