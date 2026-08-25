@@ -329,7 +329,7 @@ async function handleMetaChat(supabase: any, clientId: number, message: string, 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 700, messages })
+    body: JSON.stringify({ model: 'openai/gpt-oss-120b', max_tokens: 700, messages })
   });
   if (!res.ok) throw new Error(`Groq API error: ${res.status}`);
   const data = await res.json();
