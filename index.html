@@ -2854,6 +2854,42 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
     ? `<span style="font-size:11px;color:${trend>=0?'var(--green)':'#f43f5e'}">${trend>=0?'▲':'▼'}${Math.abs(trend)}% vs חודש שעבר</span>`
     : '';
 
+  // ── Store-wide monthly trend: current calendar month vs previous month vs same month last year ──
+  const curMonthStart = new Date(toDate.getFullYear(), toDate.getMonth(), 1);
+  const curMonthEnd   = new Date(toDate.getFullYear(), toDate.getMonth()+1, 0);
+  const curMFrom = curMonthStart.toISOString().split('T')[0];
+  const curMTo   = curMonthEnd.toISOString().split('T')[0];
+  const yearAgoStart = new Date(toDate.getFullYear()-1, toDate.getMonth(), 1);
+  const yearAgoEnd   = new Date(toDate.getFullYear()-1, toDate.getMonth()+1, 0);
+  const yearAgoFrom = yearAgoStart.toISOString().split('T')[0];
+  const yearAgoTo   = yearAgoEnd.toISOString().split('T')[0];
+
+  const [curMonthStoreRows, prevMonthStoreRows, yearAgoStoreRows] = await Promise.all([
+    supaFetch('store_daily_sales', `?select=total_sales,customers_count&client_id=eq.${clientId}&date=gte.${curMFrom}&date=lte.${curMTo}`),
+    supaFetch('store_daily_sales', `?select=total_sales,customers_count&client_id=eq.${clientId}&date=gte.${prevFrom}&date=lte.${prevTo}`),
+    supaFetch('store_daily_sales', `?select=total_sales,customers_count&client_id=eq.${clientId}&date=gte.${yearAgoFrom}&date=lte.${yearAgoTo}`)
+  ]);
+  const sumStore = rowsArr => ({
+    sales:     (rowsArr||[]).reduce((s,r) => s + parseFloat(r.total_sales||0), 0),
+    customers: (rowsArr||[]).reduce((s,r) => s + parseInt(r.customers_count||0), 0)
+  });
+  const curMonthStore  = sumStore(curMonthStoreRows);
+  const prevMonthStore = sumStore(prevMonthStoreRows);
+  const yearAgoStore   = sumStore(yearAgoStoreRows);
+  const pctDelta   = (cur, base) => base ? ((cur - base) / base * 100).toFixed(0) : null;
+  const trendBadge = (cur, base, label) => {
+    const d = pctDelta(cur, base);
+    if (d === null) return '';
+    return `<span style="font-size:11px;color:${d>=0?'var(--green)':'#f43f5e'}">${d>=0?'▲':'▼'}${Math.abs(d)}% ${label}</span>`;
+  };
+  const monthNamesHe  = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  const curMonthIsPartial = to < curMTo; // עדיין באמצע החודש - השוואה מול חודשים מלאים היא לא בדיוק תפוח-בתפוח
+  const curMonthLabel = `${monthNamesHe[toDate.getMonth()]} ${toDate.getFullYear()}${curMonthIsPartial ? ' (בתהליך)' : ''}`;
+  const salesVsPrevMonth = trendBadge(curMonthStore.sales, prevMonthStore.sales, 'לעומת חודש שעבר');
+  const salesVsYearAgo   = trendBadge(curMonthStore.sales, yearAgoStore.sales, `לעומת ${monthNamesHe[toDate.getMonth()]} אשתקד`);
+  const custVsPrevMonth  = trendBadge(curMonthStore.customers, prevMonthStore.customers, 'לעומת חודש שעבר');
+  const custVsYearAgo    = trendBadge(curMonthStore.customers, yearAgoStore.customers, `לעומת ${monthNamesHe[toDate.getMonth()]} אשתקד`);
+
   // ── Daily aggregation for charts ─────────────────────────
   const dayMap = {};
   rows.forEach(r => {
@@ -2907,6 +2943,16 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
         <div class="kpi-label">💰 סך כל המכירות בחנות</div>
         <div class="kpi-val" style="color:var(--accent)">${sym}${Math.round(storeTotalSales).toLocaleString('he-IL')}</div>
         <div class="kpi-sub">${storeTotalOrders.toLocaleString('he-IL')} הזמנות · ${label} · כלל הלקוחות (חדשים + קיימים)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">💰 מכירות — ${curMonthLabel}</div>
+        <div class="kpi-val" style="color:var(--accent)">${sym}${Math.round(curMonthStore.sales).toLocaleString('he-IL')}</div>
+        <div class="kpi-sub" style="display:flex;flex-direction:column;gap:3px">${salesVsPrevMonth||''}${salesVsYearAgo||''}${!salesVsPrevMonth&&!salesVsYearAgo?'אין נתוני השוואה עדיין':''}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">👥 סה״כ לקוחות — ${curMonthLabel}</div>
+        <div class="kpi-val" style="color:var(--accent2)">${curMonthStore.customers.toLocaleString('he-IL')}</div>
+        <div class="kpi-sub" style="display:flex;flex-direction:column;gap:3px">${custVsPrevMonth||''}${custVsYearAgo||''}${!custVsPrevMonth&&!custVsYearAgo?'אין נתוני השוואה עדיין':''}</div>
       </div>
     </div>
 
@@ -3033,7 +3079,11 @@ function drawAsifStoreTimeSeries() {
   const sym = asifChartSym;
   const period = asifChartPeriod;
 
-  const sourceRows = asifStoreRows.filter(r => r.date >= asifChartFrom && r.date <= asifChartTo);
+  // מצב יומי מכבד את טווח הסינון העליון; חודשי/שנתי מציגים את כל ההיסטוריה
+  // הזמינה כדי לאפשר השוואה מול חודשים/שנים קודמים (כולל שנה אחורה).
+  const sourceRows = period === 'daily'
+    ? asifStoreRows.filter(r => r.date >= asifChartFrom && r.date <= asifChartTo)
+    : asifStoreRows;
 
   const bucketMap = {};
   for (const r of sourceRows) {
