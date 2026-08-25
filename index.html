@@ -595,8 +595,6 @@ let metaAlertsCache = {};
 let metaAlertFilter = {};
 
 const ENTITY_LEVEL_LABEL = { campaign: 'קמפיין', adset: 'אדסט', ad: 'מודעה', account: 'חשבון' };
-const ENTITY_LEVEL_RANK  = { campaign: 0, adset: 1, ad: 2, account: 3 };
-function entityGroupKey(a) { return `${a.entity_level || 'other'}::${a.entity_name || '-'}`; }
 
 // Builds the "הוצאה כוללת" KPI card. Self-contained so it can be called
 // both on initial client-page render and again after the async Meta fetch
@@ -1639,20 +1637,70 @@ function historyRow(clientId, a, sym) {
 // Groups active alerts by entity (campaign/adset/ad/account), sorted
 // campaign -> adset -> ad -> account, and naturally within each level (so
 // "2 | BOF" sorts before "10 | ..." instead of alphabetically as text).
-function groupAndSortAlerts(alerts) {
-  const groups = new Map();
-  for (const a of alerts) {
-    const key = entityGroupKey(a);
-    if (!groups.has(key)) groups.set(key, { key, entity_level: a.entity_level, entity_name: a.entity_name, items: [] });
-    groups.get(key).items.push(a);
+// Which campaign an alert belongs to, for the top level of the hierarchy.
+// Works directly for campaign-level alerts; for adset/ad-level alerts it
+// relies on evidence_json.campaign_name (set by the MCP breakdown scripts -
+// see files1/meta-mcp-audit-alerts*.js). Older ad-level alerts from the
+// original rule engine (analysis.ts) don't carry that field yet, so they
+// fall back into an explicit "not linked to a known campaign" bucket
+// instead of silently guessing.
+function campaignBucketOf(a) {
+  if (a.entity_level === 'account') return { key: '__account__', label: '🏢 כלל החשבון' };
+  if (a.entity_level === 'campaign') return { key: `c::${a.entity_name}`, label: a.entity_name };
+  const campaignName = a.evidence_json?.campaign_name;
+  if (campaignName) return { key: `c::${campaignName}`, label: campaignName };
+  return { key: '__unlinked__', label: '❓ לא משויך לקמפיין ידוע' };
+}
+
+// Which adset an alert belongs to, for the second level - null means "no
+// sub-group, sits directly under the campaign" (campaign-level alerts, or
+// ad-level alerts with no known adset).
+function adsetBucketOf(a) {
+  if (a.entity_level === 'adset') {
+    // entity_name is written as "קמפיין > אדסט" by the MCP breakdown
+    // scripts - split off the campaign part, keep just the adset name.
+    const parts = (a.entity_name || '').split(' > ');
+    const label = parts.length > 1 ? parts.slice(1).join(' > ') : a.entity_name;
+    return { key: `a::${label}`, label };
   }
-  const arr = [...groups.values()];
+  if (a.entity_level === 'ad' && a.evidence_json?.adset_name) {
+    return { key: `a::${a.evidence_json.adset_name}`, label: a.evidence_json.adset_name };
+  }
+  return null;
+}
+
+// Builds the 2-level tree: campaign -> (direct items + adset sub-groups).
+function groupAlertsHierarchy(alerts) {
+  const campaigns = new Map();
+  for (const a of alerts) {
+    const camp = campaignBucketOf(a);
+    if (!campaigns.has(camp.key)) campaigns.set(camp.key, { key: camp.key, label: camp.label, direct: [], adsets: new Map() });
+    const bucket = campaigns.get(camp.key);
+    const adset = adsetBucketOf(a);
+    if (!adset) { bucket.direct.push(a); continue; }
+    if (!bucket.adsets.has(adset.key)) bucket.adsets.set(adset.key, { key: adset.key, label: adset.label, items: [] });
+    bucket.adsets.get(adset.key).items.push(a);
+  }
+
   const sevRank = { critical: 0, warning: 1, info: 2 };
-  arr.forEach(g => g.items.sort((x, y) => (sevRank[x.severity] ?? 9) - (sevRank[y.severity] ?? 9)));
+  const sevSort = (x, y) => (sevRank[x.severity] ?? 9) - (sevRank[y.severity] ?? 9);
+  const nameSort = (x, y) => (x.label || '').localeCompare(y.label || '', 'he', { numeric: true });
+
+  const arr = [...campaigns.values()];
+  arr.forEach(c => {
+    c.direct.sort(sevSort);
+    c.adsetList = [...c.adsets.values()].sort(nameSort);
+    c.adsetList.forEach(g => g.items.sort(sevSort));
+    c.count = c.direct.length + c.adsetList.reduce((s, g) => s + g.items.length, 0);
+  });
+  // __account__ first (whole-account findings), __unlinked__ last, real
+  // campaigns naturally sorted (their names start with "1 |", "2 |" etc).
   arr.sort((x, y) => {
-    const r = (ENTITY_LEVEL_RANK[x.entity_level] ?? 9) - (ENTITY_LEVEL_RANK[y.entity_level] ?? 9);
-    if (r !== 0) return r;
-    return (x.entity_name || '').localeCompare(y.entity_name || '', 'he', { numeric: true });
+    if (x.key === '__account__') return -1;
+    if (y.key === '__account__') return 1;
+    if (x.key === '__unlinked__') return 1;
+    if (y.key === '__unlinked__') return -1;
+    return nameSort(x, y);
   });
   return arr;
 }
@@ -1665,23 +1713,34 @@ function buildMetaAlertsBlockHtml(clientId, sym) {
   const resolvedAlerts = data.resolved_alerts || [];
   const filter = metaAlertFilter[clientId] || 'all';
 
-  const groups = groupAndSortAlerts(alerts);
-  const filterHtml = groups.length > 1 ? `
+  const campaigns = groupAlertsHierarchy(alerts);
+  const filterHtml = campaigns.length > 1 ? `
     <select onchange="setAlertFilter(${clientId},'${sym}',this.value)" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;font-family:'Heebo',sans-serif;margin-bottom:10px">
-      <option value="all" ${filter === 'all' ? 'selected' : ''}>הכל קמפיינים/אדסטים (${alerts.length})</option>
-      ${groups.map(g => `<option value="${g.key}" ${filter === g.key ? 'selected' : ''}>${ENTITY_LEVEL_LABEL[g.entity_level] || g.entity_level}: ${g.entity_name} (${g.items.length})</option>`).join('')}
+      <option value="all" ${filter === 'all' ? 'selected' : ''}>כל הקמפיינים (${alerts.length})</option>
+      ${campaigns.map(c => `<option value="${c.key}" ${filter === c.key ? 'selected' : ''}>${c.label} (${c.count})</option>`).join('')}
     </select>` : '';
 
-  const visibleGroups = filter === 'all' ? groups : groups.filter(g => g.key === filter);
-  const groupsHtml = visibleGroups.map(g => `
+  const visibleCampaigns = filter === 'all' ? campaigns : campaigns.filter(c => c.key === filter);
+  // Two-level card: campaign is the outer card; each adset inside it gets
+  // its own nested sub-header so campaign -> adset is visually a real
+  // hierarchy, not a flat list of same-looking rows.
+  const groupsHtml = visibleCampaigns.map(c => `
     <div style="border:1px solid var(--border);border-radius:10px;background:var(--surface2);margin-bottom:14px;overflow:hidden">
-      <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:rgba(59,130,246,0.06);border-bottom:1px solid var(--border)">
-        <span style="font-size:10px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.3px;background:rgba(59,130,246,0.12);padding:2px 8px;border-radius:20px">${ENTITY_LEVEL_LABEL[g.entity_level] || g.entity_level}</span>
-        <span style="font-size:13px;font-weight:700;color:var(--text)">${g.entity_name}</span>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(59,130,246,0.09);border-bottom:1px solid var(--border)">
+        <span style="font-size:10px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.3px;background:rgba(59,130,246,0.15);padding:2px 8px;border-radius:20px">קמפיין</span>
+        <span style="font-size:14px;font-weight:800;color:var(--text)">${c.label}</span>
       </div>
       <div style="padding:2px 14px">
-        ${g.items.map(a => alertRow(clientId, a, sym)).join('')}
+        ${c.direct.map(a => alertRow(clientId, a, sym)).join('')}
       </div>
+      ${c.adsetList.map(g => `
+        <div style="margin:0 14px 10px;border-top:1px dashed var(--border);padding-top:8px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+            <span style="font-size:9px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.3px;background:var(--surface);border:1px solid var(--border);padding:1px 7px;border-radius:20px">אדגרופ</span>
+            <span style="font-size:12px;font-weight:700;color:var(--muted2)">${g.label}</span>
+          </div>
+          ${g.items.map(a => alertRow(clientId, a, sym)).join('')}
+        </div>`).join('')}
     </div>`).join('');
 
   const emptyHtml = `<div style="display:flex;align-items:center;gap:8px;color:var(--green);font-size:13px;padding:6px 0"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span> לא זוהו בעיות משמעותיות</div>`;
