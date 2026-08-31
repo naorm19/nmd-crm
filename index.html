@@ -395,6 +395,32 @@
   .da-ins-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
   .da-ins-row:last-child{border-bottom:none}
   .da-empty{text-align:center;padding:40px;color:var(--muted);font-size:14px}
+  /* ── Daily routine panel (Aero Duct) ───────────────────────── */
+  .dr-verdict{border-radius:12px;padding:16px 20px;margin-bottom:18px;border:1px solid}
+  .dr-verdict.act{background:rgba(239,68,68,.10);border-color:var(--red)}
+  .dr-verdict.collect{background:rgba(34,197,94,.10);border-color:var(--green)}
+  .dr-verdict.blocked{background:rgba(234,179,8,.10);border-color:var(--yellow)}
+  .dr-verdict h3{margin:0 0 4px;font-size:15px;font-weight:800}
+  .dr-verdict .dr-meta{font-size:11px;color:var(--muted)}
+  .dr-sec-title{font-size:13px;font-weight:800;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;margin:22px 0 10px}
+  .dr-table{width:100%;border-collapse:collapse;font-size:12px}
+  .dr-table th{text-align:right;padding:8px 10px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border);white-space:nowrap}
+  .dr-table td{padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+  .dr-flag{display:inline-block;width:9px;height:9px;border-radius:50%;margin-left:7px;vertical-align:middle}
+  .dr-flag.green{background:var(--green)} .dr-flag.yellow{background:var(--yellow)}
+  .dr-flag.red{background:var(--red)}     .dr-flag.grey{background:var(--muted)}
+  .dr-task{display:flex;gap:11px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface2)}
+  .dr-task.critical{border-color:var(--red)} .dr-task.warning{border-color:var(--yellow)}
+  .dr-task-body{flex:1;min-width:0}
+  .dr-task-title{font-size:13px;font-weight:700;color:var(--text)}
+  .dr-task-detail{font-size:12px;color:var(--muted2);margin-top:3px;white-space:normal}
+  .dr-task-rec{font-size:12px;color:var(--yellow);margin-top:4px;white-space:normal}
+  .dr-task-age{font-size:11px;color:var(--red);font-weight:700;margin-top:4px}
+  .dr-task-acts{display:flex;flex-direction:column;gap:5px}
+  .dr-btn{background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'Heebo',sans-serif;white-space:nowrap}
+  .dr-btn.primary{background:var(--green);border-color:var(--green);color:#fff;font-weight:700}
+  .dr-note{width:100%;min-height:90px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:11px 13px;font-family:'Heebo',sans-serif;font-size:13px;resize:vertical}
+  .dr-empty{color:var(--muted);font-size:12px;padding:14px 0}
   .da-loading{text-align:center;padding:40px;color:var(--muted)}
   .da-loading-spin{display:inline-block;width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:10px}
   @keyframes spin{to{transform:rotate(360deg)}}
@@ -4698,11 +4724,11 @@ function stSwitchTab(id) {
 
 const DA_EDGE = 'https://jjzvaqtqtfniuxjfyoyb.supabase.co/functions/v1/search-terms';
 const DA_KEY  = 'nmd-st-2024';
-const DA_ACCT = 'PLACEHOLDER'; // TODO: update with Aero Duct Prime Google Ads account ID
+const DA_ACCT = '5696308862'; // Aero Duct Prime Google Ads customer (569-630-8862)
 const DA_CPA  = 150;
-const DA_CLIENT_ID = null; // TODO: update with Aero Duct Prime client_id in Supabase
+const DA_CLIENT_ID = 11;      // clients.id for "Aero Duct | Main"
 
-let daSec      = 'overview';
+let daSec      = 'daily';
 let daCamp     = '__all__';
 let daMode     = '7d';
 let daSTRows   = null;       // cached search terms
@@ -4737,6 +4763,7 @@ function daRenderShell() {
       </select>
     </div>
     <div class="da-nav">
+      <button class="da-sec-btn${daSec==='daily'?' active':''}" id="da-daily-btn" onclick="daPickSec('daily')">📋 שגרה יומית<span class="da-dot"></span></button>
       <button class="da-sec-btn${daSec==='overview'?' active':''}" onclick="daPickSec('overview')">📊 סקירה</button>
       <button class="da-sec-btn${daSec==='st'?' active':''}" onclick="daPickSec('st')">🔎 Search Terms</button>
       <button class="da-sec-btn${daSec==='insights'?' active':''}" id="da-ins-btn" onclick="daPickSec('insights')">💡 תובנות<span class="da-dot"></span></button>
@@ -4825,9 +4852,195 @@ function daDays() {
 function daRefreshDisplay() {
   const el = document.getElementById('da-content');
   if (!el) return;
-  if (daSec==='overview') daRenderOverview(el);
+  if (daSec==='daily') daRenderDaily(el);
+  else if (daSec==='overview') daRenderOverview(el);
   else if (daSec==='st') daRenderST(el);
   else if (daSec==='insights') daRenderInsights(el);
+}
+
+/* ══════════════════════════════════════════════════════
+   Daily routine panel
+   Reads daily_summaries / daily_tasks / daily_notes, all written
+   cloud-side by aero_build_daily() on a pg_cron schedule (06:30 IL).
+   The page only ever writes two things: a task's status, and the
+   day's note. Task creation stays service_role, so nothing here can
+   invent a task.
+   ══════════════════════════════════════════════════════ */
+
+let drCache = null;
+
+function drHead() {
+  return { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY };
+}
+function drToday() {
+  // Israel-local date, so the note lands on the day Naor is actually
+  // having, not on UTC's idea of it.
+  return new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
+}
+function drEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+async function drLoad() {
+  const q = `${SUPA_URL}/rest/v1`;
+  const [sum, tasks, note] = await Promise.all([
+    fetch(`${q}/daily_summaries?client_id=eq.${DA_CLIENT_ID}&order=target_date.desc&limit=1`, { headers: drHead() }).then(r => r.json()),
+    fetch(`${q}/daily_tasks?client_id=eq.${DA_CLIENT_ID}&status=in.(open,snoozed)&order=severity.asc,first_seen.asc`, { headers: drHead() }).then(r => r.json()),
+    fetch(`${q}/daily_notes?client_id=eq.${DA_CLIENT_ID}&note_date=eq.${drToday()}&limit=1`, { headers: drHead() }).then(r => r.json())
+  ]);
+  drCache = {
+    summary: Array.isArray(sum) && sum[0] ? sum[0] : null,
+    tasks: Array.isArray(tasks) ? tasks : [],
+    note: Array.isArray(note) && note[0] ? note[0].body : ''
+  };
+  return drCache;
+}
+
+function daRenderDaily(el) {
+  el.innerHTML = '<div class="da-loading"><div class="da-loading-spin"></div><br>טוען שגרה יומית...</div>';
+  drLoad().then(d => drPaint(el, d)).catch(e => {
+    el.innerHTML = `<div class="dr-empty">לא הצלחתי לטעון את השגרה היומית: ${drEsc(e.message)}</div>`;
+  });
+}
+
+function drPaint(el, d) {
+  const s = d.summary;
+
+  // Urgency dot on the nav button, same convention as the insights tab.
+  const critOpen = d.tasks.filter(t => t.severity === 'critical' && t.status === 'open').length;
+  document.getElementById('da-daily-btn')?.classList.toggle('has-urgent', critOpen > 0);
+
+  if (!s) {
+    el.innerHTML = `<div class="dr-empty">עדיין לא נוצר סיכום יומי. הבדיקה רצה בענן בכל יום ב-06:30 שעון ישראל, ראשון עד שישי.
+      אם המיגרציה עוד לא הורצה ב-Supabase, זה מה שחסר.</div>`;
+    return;
+  }
+
+  const dstr = new Date(s.target_date).toLocaleDateString('he-IL');
+  const vTxt = s.verdict === 'act' ? 'לפעול היום'
+             : s.verdict === 'blocked' ? 'חסום, אין ניתוח היום'
+             : 'להמשיך לאסוף נתונים';
+
+  const rows = Array.isArray(s.campaign_rows) ? s.campaign_rows : [];
+  const tSpend = rows.reduce((a, r) => a + Number(r.spend || 0), 0);
+  const tConv  = rows.reduce((a, r) => a + Number(r.conversions || 0), 0);
+
+  // Section 5: Google's primary conversions and Leader's unique
+  // inquiries are separate measures. Only Google's are shown here,
+  // and the column says so, so the two can never be blended.
+  const table = rows.length === 0 ? '<div class="dr-empty">אין קמפיינים פעילים לתאריך הזה.</div>' : `
+    <table class="dr-table">
+      <thead><tr>
+        <th>קמפיין</th><th>הוצאה</th><th>חשיפות</th><th>קליקים</th>
+        <th>CTR</th><th>CPC</th><th>המרות ראשיות</th><th>CPA גוגל</th><th>tCPA</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td><span class="dr-flag ${r.flag}"></span>${drEsc(r.name)}</td>
+          <td>$${Number(r.spend || 0).toFixed(2)}</td>
+          <td>${Number(r.impressions || 0).toLocaleString()}</td>
+          <td>${Number(r.clicks || 0)}</td>
+          <td>${r.ctr != null ? r.ctr + '%' : '-'}</td>
+          <td>${r.cpc != null ? '$' + r.cpc : '-'}</td>
+          <td>${Number(r.conversions || 0)}</td>
+          <td>${r.cpa != null ? '$' + r.cpa : '-'}</td>
+          <td style="color:var(--muted)">${r.target_cpa != null ? '$' + r.target_cpa : '-'}</td>
+        </tr>`).join('')}
+        <tr style="font-weight:800">
+          <td>סה"כ</td><td>$${tSpend.toFixed(2)}</td>
+          <td colspan="4"></td><td>${tConv}</td>
+          <td>${tConv > 0 ? '$' + (tSpend / tConv).toFixed(2) : '-'}</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">
+      ירוק עד 145 דולר לפנייה, צהוב עד ה-tCPA של הקמפיין, אדום מעליו. אפור הוא אפס חשיפות.
+      המספרים כאן הם המרות ראשיות של גוגל בלבד. פניות ייחודיות בלידר נספרות בנפרד לפי מספר טלפון.
+    </div>`;
+
+  const act     = d.tasks.filter(t => t.severity !== 'info');
+  const routine = d.tasks.filter(t => t.severity === 'info');
+
+  el.innerHTML = `
+    <div class="dr-verdict ${s.verdict}">
+      <h3>${vTxt}</h3>
+      <div style="font-size:13px;color:var(--text);margin-bottom:6px">${drEsc(s.headline || '')}</div>
+      <div class="dr-meta">
+        תאריך יעד ${dstr}
+        ${s.spend_3d_avg != null ? ' · ממוצע 3 ימים פעילים $' + Number(s.spend_3d_avg).toFixed(2) + ' (טווח 400 עד 500)' : ''}
+        ${s.data_complete ? '' : ' · הנתונים לא מלאים'}
+        · עודכן ${new Date(s.generated_at).toLocaleString('he-IL')}
+      </div>
+    </div>
+
+    <div class="dr-sec-title">הקמפיינים</div>
+    ${table}
+
+    <div class="dr-sec-title">פעולה עכשיו</div>
+    ${act.length ? act.map(drTaskHtml).join('') : '<div class="dr-empty">אין ממצא שדורש פעולה.</div>'}
+
+    <div class="dr-sec-title">בדיקות השגרה של היום</div>
+    ${routine.length ? routine.map(drTaskHtml).join('') : '<div class="dr-empty">כל בדיקות השגרה של היום סומנו.</div>'}
+
+    <div class="dr-sec-title">הערות שלי על היום</div>
+    <textarea class="dr-note" id="dr-note" placeholder="מה שיניתי היום, ולמה. זה מה שיסביר בעוד שבוע למה משהו השתנה.">${drEsc(d.note)}</textarea>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+      <button class="dr-btn primary" onclick="drSaveNote()">שמור הערה</button>
+      <span id="dr-note-status" style="font-size:11px;color:var(--muted)"></span>
+    </div>`;
+}
+
+function drTaskHtml(t) {
+  const age = t.first_seen
+    ? Math.round((new Date(drToday()) - new Date(t.first_seen)) / 86400000) : 0;
+  return `<div class="dr-task ${t.severity}">
+    <div class="dr-task-body">
+      <div class="dr-task-title">${drEsc(t.title)}</div>
+      ${t.detail ? `<div class="dr-task-detail">${drEsc(t.detail)}</div>` : ''}
+      ${t.recommendation ? `<div class="dr-task-rec">${drEsc(t.recommendation)}</div>` : ''}
+      ${age >= 2 ? `<div class="dr-task-age">פתוח ${age} ימים</div>` : ''}
+      ${t.status === 'snoozed' ? `<div class="dr-task-age" style="color:var(--muted)">נדחה עד ${new Date(t.snoozed_until).toLocaleDateString('he-IL')}</div>` : ''}
+    </div>
+    <div class="dr-task-acts">
+      <button class="dr-btn primary" onclick="drDone(${t.id})">בוצע</button>
+      ${t.status === 'open' ? `<button class="dr-btn" onclick="drSnooze(${t.id})">דחה לשבוע</button>` : ''}
+    </div>
+  </div>`;
+}
+
+async function drPatchTask(id, body) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/daily_tasks?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { ...drHead(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) { alert('לא הצלחתי לעדכן את המשימה: ' + (await r.text())); return; }
+  daRefreshDisplay();
+}
+
+function drDone(id) {
+  drPatchTask(id, { status: 'done', done_at: new Date().toISOString() });
+}
+
+function drSnooze(id) {
+  const until = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  drPatchTask(id, { status: 'snoozed', snoozed_until: until });
+}
+
+async function drSaveNote() {
+  const body = document.getElementById('dr-note')?.value || '';
+  const st = document.getElementById('dr-note-status');
+  if (st) st.textContent = 'שומר...';
+  // on_conflict + merge-duplicates makes this an upsert on the
+  // (client_id, note_date) unique key, so editing today's note twice
+  // updates it instead of failing.
+  const r = await fetch(`${SUPA_URL}/rest/v1/daily_notes?on_conflict=client_id,note_date`, {
+    method: 'POST',
+    headers: { ...drHead(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ client_id: DA_CLIENT_ID, note_date: drToday(), body, updated_at: new Date().toISOString() })
+  });
+  if (st) st.textContent = r.ok ? 'נשמר' : 'שגיאה בשמירה';
 }
 
 function daFmt$(n){ return '$'+Number(n||0).toFixed(0); }
