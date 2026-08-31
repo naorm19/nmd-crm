@@ -1294,6 +1294,7 @@ async function showClient(clientId, dateMode) {
 </div>
     ${c.meta_ad_account_id ? `<div id="meta-banner-${c.id}"></div>` : ''}
     ${c.google_customer_id ? `<div id="google-gap-banner-${c.id}"></div>` : ''}
+    ${DAILY_ROUTINE_CLIENTS.includes(c.id) ? `<div id="daily-routine-${c.id}" class="chart-card" style="margin-bottom:16px"></div>` : ''}
     <div class="kpi-grid">
       <div id="total-spend-kpi-${c.id}">${totalSpendKpiHtml}</div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
@@ -1442,6 +1443,7 @@ async function showClient(clientId, dateMode) {
   if (c.business_name === 'מקור השפע') await loadNewCustomersInline(c.id, from, to);
   if (c.business_name === 'דני ספרים') renderDaniSales(c.id, from, to, sym);
   if (c.meta_ad_account_id) loadMetaPanel(c.id, sym);
+  if (DAILY_ROUTINE_CLIENTS.includes(c.id)) loadDailyRoutine(c.id);
   if (c.google_customer_id) loadGoogleGapBanner(c.id, sym);
 }
 
@@ -4867,7 +4869,12 @@ function daRefreshDisplay() {
    invent a task.
    ══════════════════════════════════════════════════════ */
 
-let drCache = null;
+// Clients whose card shows a daily routine panel. Adding a second
+// client is a one-line change here plus a pg_cron job calling
+// aero_build_daily(<id>) - the panel itself is client-agnostic.
+const DAILY_ROUTINE_CLIENTS = [11];
+
+const drCache = {};   // clientId -> { data, elId }
 
 function drHead() {
   return { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY };
@@ -4882,41 +4889,69 @@ function drEsc(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-async function drLoad() {
+async function drLoad(clientId) {
   const q = `${SUPA_URL}/rest/v1`;
   const [sum, tasks, note] = await Promise.all([
-    fetch(`${q}/daily_summaries?client_id=eq.${DA_CLIENT_ID}&order=target_date.desc&limit=1`, { headers: drHead() }).then(r => r.json()),
-    fetch(`${q}/daily_tasks?client_id=eq.${DA_CLIENT_ID}&status=in.(open,snoozed)&order=severity.asc,first_seen.asc`, { headers: drHead() }).then(r => r.json()),
-    fetch(`${q}/daily_notes?client_id=eq.${DA_CLIENT_ID}&note_date=eq.${drToday()}&limit=1`, { headers: drHead() }).then(r => r.json())
+    fetch(`${q}/daily_summaries?client_id=eq.${clientId}&order=target_date.desc&limit=1`, { headers: drHead() }).then(r => r.json()),
+    fetch(`${q}/daily_tasks?client_id=eq.${clientId}&status=in.(open,snoozed)&order=severity.asc,first_seen.asc`, { headers: drHead() }).then(r => r.json()),
+    fetch(`${q}/daily_notes?client_id=eq.${clientId}&note_date=eq.${drToday()}&limit=1`, { headers: drHead() }).then(r => r.json())
   ]);
-  drCache = {
+  return {
     summary: Array.isArray(sum) && sum[0] ? sum[0] : null,
     tasks: Array.isArray(tasks) ? tasks : [],
     note: Array.isArray(note) && note[0] ? note[0].body : ''
   };
-  return drCache;
+}
+
+// Entry point used by the client card. The tab-da section calls
+// daRenderDaily() instead; both end up in drRender().
+function loadDailyRoutine(clientId) {
+  const el = document.getElementById(`daily-routine-${clientId}`);
+  if (el) drRender(el, clientId, true);
 }
 
 function daRenderDaily(el) {
+  drRender(el, DA_CLIENT_ID, false);
+}
+
+function drRender(el, clientId, withHeader) {
+  drCache[clientId] = { elId: el.id, withHeader };
   el.innerHTML = '<div class="da-loading"><div class="da-loading-spin"></div><br>טוען שגרה יומית...</div>';
-  drLoad().then(d => drPaint(el, d)).catch(e => {
+  drLoad(clientId).then(d => drPaint(el, d, clientId, withHeader)).catch(e => {
     el.innerHTML = `<div class="dr-empty">לא הצלחתי לטעון את השגרה היומית: ${drEsc(e.message)}</div>`;
   });
 }
 
-function drPaint(el, d) {
+// Re-render whichever container this client's panel last painted into,
+// so an action taken on the card refreshes the card, and one taken in
+// the tab refreshes the tab.
+function drReload(clientId) {
+  const c = drCache[clientId];
+  const el = c && document.getElementById(c.elId);
+  if (el) drRender(el, clientId, c.withHeader);
+}
+
+function drPaint(el, d, clientId, withHeader) {
   const s = d.summary;
 
   // Urgency dot on the nav button, same convention as the insights tab.
   const critOpen = d.tasks.filter(t => t.severity === 'critical' && t.status === 'open').length;
   document.getElementById('da-daily-btn')?.classList.toggle('has-urgent', critOpen > 0);
 
+  const header = withHeader ? `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-size:14px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px">📋 שגרה יומית</span>
+      <button class="dr-btn" onclick="drReload(${clientId})">↻ רענן</button>
+    </div>` : '';
+
   if (!s) {
-    el.innerHTML = `<div class="dr-empty">עדיין לא נוצר סיכום יומי. הבדיקה רצה בענן בכל יום ב-06:30 שעון ישראל, ראשון עד שישי.
-      אם המיגרציה עוד לא הורצה ב-Supabase, זה מה שחסר.</div>`;
+    el.innerHTML = header + `<div class="dr-empty">עדיין לא נוצר סיכום יומי. הבדיקה רצה בענן בכל יום ב-06:30 שעון ישראל, ראשון עד שישי.</div>`;
     return;
   }
+  return drPaintBody(el, d, s, clientId, header);
+}
 
+function drPaintBody(el, d, s, clientId, header) {
   const dstr = new Date(s.target_date).toLocaleDateString('he-IL');
   const vTxt = s.verdict === 'act' ? 'לפעול היום'
              : s.verdict === 'blocked' ? 'חסום, אין ניתוח היום'
@@ -4962,7 +4997,7 @@ function drPaint(el, d) {
   const act     = d.tasks.filter(t => t.severity !== 'info');
   const routine = d.tasks.filter(t => t.severity === 'info');
 
-  el.innerHTML = `
+  el.innerHTML = header + `
     <div class="dr-verdict ${s.verdict}">
       <h3>${vTxt}</h3>
       <div style="font-size:13px;color:var(--text);margin-bottom:6px">${drEsc(s.headline || '')}</div>
@@ -4978,20 +5013,20 @@ function drPaint(el, d) {
     ${table}
 
     <div class="dr-sec-title">פעולה עכשיו</div>
-    ${act.length ? act.map(drTaskHtml).join('') : '<div class="dr-empty">אין ממצא שדורש פעולה.</div>'}
+    ${act.length ? act.map(t => drTaskHtml(t, clientId)).join('') : '<div class="dr-empty">אין ממצא שדורש פעולה.</div>'}
 
     <div class="dr-sec-title">בדיקות השגרה של היום</div>
-    ${routine.length ? routine.map(drTaskHtml).join('') : '<div class="dr-empty">כל בדיקות השגרה של היום סומנו.</div>'}
+    ${routine.length ? routine.map(t => drTaskHtml(t, clientId)).join('') : '<div class="dr-empty">כל בדיקות השגרה של היום סומנו.</div>'}
 
     <div class="dr-sec-title">הערות שלי על היום</div>
-    <textarea class="dr-note" id="dr-note" placeholder="מה שיניתי היום, ולמה. זה מה שיסביר בעוד שבוע למה משהו השתנה.">${drEsc(d.note)}</textarea>
+    <textarea class="dr-note" id="dr-note-${clientId}" placeholder="מה שיניתי היום, ולמה. זה מה שיסביר בעוד שבוע למה משהו השתנה.">${drEsc(d.note)}</textarea>
     <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
-      <button class="dr-btn primary" onclick="drSaveNote()">שמור הערה</button>
-      <span id="dr-note-status" style="font-size:11px;color:var(--muted)"></span>
+      <button class="dr-btn primary" onclick="drSaveNote(${clientId})">שמור הערה</button>
+      <span id="dr-note-status-${clientId}" style="font-size:11px;color:var(--muted)"></span>
     </div>`;
 }
 
-function drTaskHtml(t) {
+function drTaskHtml(t, clientId) {
   const age = t.first_seen
     ? Math.round((new Date(drToday()) - new Date(t.first_seen)) / 86400000) : 0;
   return `<div class="dr-task ${t.severity}">
@@ -5003,34 +5038,34 @@ function drTaskHtml(t) {
       ${t.status === 'snoozed' ? `<div class="dr-task-age" style="color:var(--muted)">נדחה עד ${new Date(t.snoozed_until).toLocaleDateString('he-IL')}</div>` : ''}
     </div>
     <div class="dr-task-acts">
-      <button class="dr-btn primary" onclick="drDone(${t.id})">בוצע</button>
-      ${t.status === 'open' ? `<button class="dr-btn" onclick="drSnooze(${t.id})">דחה לשבוע</button>` : ''}
+      <button class="dr-btn primary" onclick="drDone(${t.id}, ${clientId})">בוצע</button>
+      ${t.status === 'open' ? `<button class="dr-btn" onclick="drSnooze(${t.id}, ${clientId})">דחה לשבוע</button>` : ''}
     </div>
   </div>`;
 }
 
-async function drPatchTask(id, body) {
+async function drPatchTask(id, clientId, body) {
   const r = await fetch(`${SUPA_URL}/rest/v1/daily_tasks?id=eq.${id}`, {
     method: 'PATCH',
     headers: { ...drHead(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
     body: JSON.stringify(body)
   });
   if (!r.ok) { alert('לא הצלחתי לעדכן את המשימה: ' + (await r.text())); return; }
-  daRefreshDisplay();
+  drReload(clientId);
 }
 
-function drDone(id) {
-  drPatchTask(id, { status: 'done', done_at: new Date().toISOString() });
+function drDone(id, clientId) {
+  drPatchTask(id, clientId, { status: 'done', done_at: new Date().toISOString() });
 }
 
-function drSnooze(id) {
+function drSnooze(id, clientId) {
   const until = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-  drPatchTask(id, { status: 'snoozed', snoozed_until: until });
+  drPatchTask(id, clientId, { status: 'snoozed', snoozed_until: until });
 }
 
-async function drSaveNote() {
-  const body = document.getElementById('dr-note')?.value || '';
-  const st = document.getElementById('dr-note-status');
+async function drSaveNote(clientId) {
+  const body = document.getElementById(`dr-note-${clientId}`)?.value || '';
+  const st = document.getElementById(`dr-note-status-${clientId}`);
   if (st) st.textContent = 'שומר...';
   // on_conflict + merge-duplicates makes this an upsert on the
   // (client_id, note_date) unique key, so editing today's note twice
@@ -5038,7 +5073,7 @@ async function drSaveNote() {
   const r = await fetch(`${SUPA_URL}/rest/v1/daily_notes?on_conflict=client_id,note_date`, {
     method: 'POST',
     headers: { ...drHead(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify({ client_id: DA_CLIENT_ID, note_date: drToday(), body, updated_at: new Date().toISOString() })
+    body: JSON.stringify({ client_id: clientId, note_date: drToday(), body, updated_at: new Date().toISOString() })
   });
   if (st) st.textContent = r.ok ? 'נשמר' : 'שגיאה בשמירה';
 }
