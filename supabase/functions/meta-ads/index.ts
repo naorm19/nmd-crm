@@ -62,6 +62,12 @@ function getSupabase() {
 
 const META_RESULT_LABELS: Record<string, string> = { purchase: 'רכישות', message: 'שיחות', lead: 'לידים' };
 
+// How far back the per-day series in handleOverview reaches. 400 days covers
+// every preset the client card's date picker offers except 'alltime' (which
+// starts 2024-01-01); the dashboard reports a partial range rather than
+// silently undercounting when a request reaches past series_from.
+const SERIES_DAYS = 400;
+
 function israelDateString(offsetDays = 0): string {
   const now = new Date();
   const israelMs = now.getTime() + (3 * 60 * 60 * 1000) + (offsetDays * 24 * 60 * 60 * 1000);
@@ -72,7 +78,7 @@ function israelDateString(offsetDays = 0): string {
 // enough ads (Asif-Market: 1250+ rows for a 20-day window) silently got a
 // truncated, undercounted spend_month from a single unpaginated query - loop
 // with .range() until a page comes back short.
-async function fetchAllRows(supabase: any, accountIds: string[], monthStart: string, today: string) {
+async function fetchAllRows(supabase: any, accountIds: string[], windowStart: string, windowEnd: string) {
   const pageSize = 1000;
   let all: any[] = [];
   let from = 0;
@@ -80,8 +86,8 @@ async function fetchAllRows(supabase: any, accountIds: string[], monthStart: str
     const { data, error } = await supabase.from('meta_ad_daily')
       .select('day, amount_spent, campaign_id, purchases, messaging_conversations_started, leads')
       .in('account_id', accountIds)
-      .gte('day', monthStart)
-      .lte('day', today)
+      .gte('day', windowStart)
+      .lte('day', windowEnd)
       .range(from, from + pageSize - 1);
     if (error) throw new Error(error.message);
     all = all.concat(data || []);
@@ -105,11 +111,21 @@ async function handleOverview(supabase: any, clientId: number) {
 
   const today = israelDateString(0);
   const monthStart = today.slice(0, 7) + '-01';
+  // The panel used to fetch the current calendar month only, which meant every
+  // Meta number on the client card was 0 on the 1st of a month (found
+  // 2026-09-01: seven clients, all showing zero, with data through 31.08 sitting
+  // in the table), and meant the dashboard could only ever show Meta spend for
+  // the 'today' and 'month' date modes - the other seven modes silently said
+  // "Google only". Fetch a rolling window instead and derive both the
+  // month-to-date figures and a per-day series from it, so any date range the
+  // client card offers can be answered from the same payload.
+  const seriesStart = israelDateString(-SERIES_DAYS);
+  const windowStart = seriesStart < monthStart ? seriesStart : monthStart;
 
   const ALERT_FIELDS = 'id, severity, title, explanation, recommendation, entity_level, entity_id, entity_name, evidence_json, data_through, last_detected_at, acknowledged_at, resolved_at, snoozed_until, status';
 
-  const [monthRows, { data: lastImport }, { data: openOrSnoozed }, { data: closedAlerts }, { data: configs }] = await Promise.all([
-    fetchAllRows(supabase, accountIds, monthStart, today),
+  const [windowRows, { data: lastImport }, { data: openOrSnoozed }, { data: closedAlerts }, { data: configs }] = await Promise.all([
+    fetchAllRows(supabase, accountIds, windowStart, today),
     supabase.from('meta_imports')
       .select('status, data_through, imported_at, row_count, inserted_count, updated_count, error_message')
       .order('imported_at', { ascending: false })
@@ -166,12 +182,38 @@ async function handleOverview(supabase: any, clientId: number) {
 
   const resultTypeByCampaign = Object.fromEntries((configs || []).map((c: any) => [c.campaign_id, c.result_type]));
 
-  const spendToday = (monthRows || []).filter((r: any) => r.day === today).reduce((s: number, r: any) => s + (Number(r.amount_spent) || 0), 0);
-  const spendMonth = (monthRows || []).reduce((s: number, r: any) => s + (Number(r.amount_spent) || 0), 0);
+  const allRows = windowRows || [];
+  const monthRows = allRows.filter((r: any) => r.day >= monthStart);
+
+  const spendToday = allRows.filter((r: any) => r.day === today).reduce((s: number, r: any) => s + (Number(r.amount_spent) || 0), 0);
+  const spendMonth = monthRows.reduce((s: number, r: any) => s + (Number(r.amount_spent) || 0), 0);
+
+  // Per-day roll-up of the whole window. This is what lets the client card
+  // answer '7 days' / 'last month' / a custom range for Meta the same way it
+  // already does for Google, instead of falling back to "Google only".
+  const dayAgg: Record<string, { spend: number; purchases: number; messages: number; leads: number }> = {};
+  for (const r of allRows) {
+    const d = (dayAgg[r.day] = dayAgg[r.day] || { spend: 0, purchases: 0, messages: 0, leads: 0 });
+    d.spend += Number(r.amount_spent) || 0;
+    d.purchases += Number(r.purchases) || 0;
+    d.messages += Number(r.messaging_conversations_started) || 0;
+    d.leads += Number(r.leads) || 0;
+  }
+  const daily = Object.keys(dayAgg).sort().map(day => ({
+    day,
+    spend: Number(dayAgg[day].spend.toFixed(2)),
+    purchases: dayAgg[day].purchases,
+    messages: dayAgg[day].messages,
+    leads: dayAgg[day].leads
+  }));
+  // This client's own latest day with data. `last_import.data_through` is
+  // global (meta_imports has no per-account column), so it is the wrong number
+  // to show on a single client's card.
+  const dataThrough = daily.length ? daily[daily.length - 1].day : null;
 
   const byType: Record<string, { spend: number; count: number }> = {};
   let unclassifiedSpend = 0;
-  for (const r of (monthRows || [])) {
+  for (const r of monthRows) {
     const type = resultTypeByCampaign[r.campaign_id];
     if (!type || type === 'none') { unclassifiedSpend += Number(r.amount_spent) || 0; continue; }
     byType[type] = byType[type] || { spend: 0, count: 0 };
@@ -197,6 +239,10 @@ async function handleOverview(supabase: any, clientId: number) {
     spend_month: Number(spendMonth.toFixed(2)),
     unclassified_spend_mtd: Number(unclassifiedSpend.toFixed(2)),
     primary_results: primaryResults,
+    daily,
+    series_from: windowStart,
+    series_to: today,
+    data_through: dataThrough,
     last_import: lastImport || null,
     alerts: activeAlerts,
     snoozed_alerts: stillSnoozed,

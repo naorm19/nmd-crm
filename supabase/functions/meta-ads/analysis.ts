@@ -366,11 +366,19 @@ function ruleCreativeGap(client: any, accountId: string, campaignRows: any[], ca
   if (ratio < thresholds.creative_gap_multiplier) return [];
 
   const label = ({ purchase: 'רכישה', message: 'שיחה', lead: 'ליד' } as Record<string, string>)[resultType] || 'תוצאה';
+
+  // When two distinct ads share the exact same display name, "X עולה Y לעומת X ב-Z"
+  // reads as meaningless to a human - disambiguate both mentions with a short ad_id suffix.
+  const sameName = priciest.ad_name === cheapest.ad_name;
+  const disambiguate = (name: string, adId: string) => sameName ? `${name} (#${adId.slice(-6)})` : name;
+  const priciestLabel = disambiguate(priciest.ad_name, priciest.adId);
+  const cheapestLabel = disambiguate(cheapest.ad_name, cheapest.adId);
+
   return [{
     severity: 'warning', rule_type: 'creative_gap', entity_level: 'campaign', entity_id: campaignId, entity_name: campaignName,
     title: `${client.business_name} / ${campaignName}: פער קריאייטיב בין מודעות`,
-    explanation: `המודעה "${priciest.ad_name}" עולה ${priciest.cost.toFixed(1)}₪ ל${label} לעומת "${cheapest.ad_name}" ב-${cheapest.cost.toFixed(1)}₪ - פער של פי ${ratio.toFixed(1)} (7 ימים אחרונים, שתי המודעות עם הוצאה משמעותית).`,
-    recommendation: `לבדוק מה שונה בקריאייטיב/קהל של "${priciest.ad_name}" ולשקול הפניית תקציב ל"${cheapest.ad_name}".`,
+    explanation: `המודעה "${priciestLabel}" עולה ${priciest.cost.toFixed(1)}₪ ל${label} לעומת "${cheapestLabel}" ב-${cheapest.cost.toFixed(1)}₪ - פער של פי ${ratio.toFixed(1)} (7 ימים אחרונים, שתי המודעות עם הוצאה משמעותית).`,
+    recommendation: `לבדוק מה שונה בקריאייטיב/קהל של "${priciestLabel}" ולשקול הפניית תקציב ל"${cheapestLabel}".`,
     evidence_json: {
       campaign_id: campaignId, campaign_name: campaignName, result_type: resultType,
       cheaper_ad: { name: cheapest.ad_name, spend_7d: Number(cheapest.spend.toFixed(2)), cost_per_result: Number(cheapest.cost.toFixed(2)) },

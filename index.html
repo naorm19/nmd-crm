@@ -1008,9 +1008,30 @@ function getMonthSpend(clientId, platform=null) {
 // not an arbitrary range - so "הוצאה כוללת" can only honestly include Meta
 // for the 'today' and 'month' presets. Every other range shows Google-only
 // with a visible caveat rather than a silently wrong combined total.
+// Meta spend for ANY date range, from the per-day series the overview action
+// returns. Before 2026-09-01 this only knew 'today' and 'month' and returned
+// null for everything else, so seven of the nine date presets showed
+// "Google בלבד" on every client with a Meta account, and the two it did know
+// both read 0 on the first of a month. Returns null only when the range really
+// cannot be answered - no data loaded yet, or it starts before the series does
+// - so the "Meta not included" note still means something.
+function getMetaSpendForRange(clientId, from, to) {
+  const cached = metaSpendCache[clientId];
+  if (!cached || !Array.isArray(cached.daily)) return null;
+  if (cached.series_from && from < cached.series_from) return null;
+  return cached.daily
+    .filter(d => d.day >= from && d.day <= to)
+    .reduce((s, d) => s + (Number(d.spend) || 0), 0);
+}
+
 function getMetaSpendForMode(clientId, mode) {
   const cached = metaSpendCache[clientId];
   if (!cached) return null;
+  const { from, to } = getDateRange(mode);
+  const fromSeries = getMetaSpendForRange(clientId, from, to);
+  if (fromSeries !== null) return fromSeries;
+  // Fall back to the two pre-aggregated figures for a client whose payload
+  // predates the series (an Edge Function not yet redeployed).
   if (mode === 'today') return cached.spend_today ?? null;
   if (mode === 'month') return cached.spend_month ?? null;
   return null;
@@ -1526,7 +1547,12 @@ async function loadMetaPanel(clientId, sym) {
   metaSpendCache[clientId] = {
     spend_today: data.spend_today,
     spend_month: data.spend_month,
-    data_through: data.last_import ? data.last_import.data_through : null
+    daily: data.daily || null,
+    series_from: data.series_from || null,
+    // This client's own latest day with Meta data. Prefer it over
+    // last_import.data_through, which is the newest import across ALL
+    // accounts and so was the same date on every client's card.
+    data_through: data.data_through || (data.last_import ? data.last_import.data_through : null)
   };
   const budgetSectionEl = document.getElementById(`budget-section-${clientId}`);
   if (budgetSectionEl) budgetSectionEl.innerHTML = buildBudgetSectionHtml(clientId);
@@ -1559,8 +1585,11 @@ async function loadMetaPanel(clientId, sym) {
 
   // ── Inline panel: today's spend, primary results, freshness, alert task list ──
   const li = data.last_import;
+  // data.data_through is this client's own latest day; li.data_through is the
+  // newest import across every account, so it is only used as a fallback.
+  const through = data.data_through || (li ? li.data_through : null);
   const importLine = li
-    ? `נתונים נכונים לתאריך <b>${li.data_through || '-'}</b> · סנכרון אחרון: ${li.imported_at ? new Date(li.imported_at).toLocaleString('he-IL') : '-'} · סטטוס: ${li.status === 'success' ? '✅ הצלחה' : `❌ ${li.status}${li.error_message ? ' - ' + li.error_message : ''}`}`
+    ? `נתונים נכונים לתאריך <b>${through || '-'}</b> · סנכרון אחרון: ${li.imported_at ? new Date(li.imported_at).toLocaleString('he-IL') : '-'} · סטטוס: ${li.status === 'success' ? '✅ הצלחה' : `❌ ${li.status}${li.error_message ? ' - ' + li.error_message : ''}`}`
     : 'טרם בוצע סנכרון נתוני Meta עבור לקוח זה';
 
 
