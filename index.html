@@ -1338,6 +1338,7 @@ async function showClient(clientId, dateMode) {
     ${c.meta_ad_account_id ? `<div id="meta-banner-${c.id}"></div>` : ''}
     ${c.google_customer_id ? `<div id="google-gap-banner-${c.id}"></div>` : ''}
     ${DAILY_ROUTINE_CLIENTS.includes(c.id) ? `<div id="daily-routine-${c.id}" class="chart-card" style="margin-bottom:16px"></div>` : ''}
+    ${c.id === STORE_SALES_CLIENT ? `<div id="store-freshness-${c.id}" class="freshness-strip" style="margin:0 0 12px;padding:0"></div>` : ''}
     <div class="kpi-grid">
       <div id="total-spend-kpi-${c.id}">${totalSpendKpiHtml}</div>
       <div class="kpi-card"><div class="kpi-label">${goalLabel(c,'count')}</div><div class="kpi-val" style="color:var(--green)">${ins.leads}</div><div class="kpi-sub">${label}</div></div>
@@ -1487,6 +1488,7 @@ async function showClient(clientId, dateMode) {
   if (c.business_name === 'דני ספרים') renderDaniSales(c.id, from, to, sym);
   if (c.meta_ad_account_id) loadMetaPanel(c.id, sym);
   if (DAILY_ROUTINE_CLIENTS.includes(c.id)) loadDailyRoutine(c.id);
+  if (c.id === STORE_SALES_CLIENT) loadStoreFreshness(c.id);
   if (c.google_customer_id) loadGoogleGapBanner(c.id, sym);
 }
 
@@ -3842,13 +3844,40 @@ function frWhen(days) {
   return days + " ימים אחורה";
 }
 
+// Asif is the only client with a WooCommerce sync feeding
+// store_daily_sales, so its freshness belongs on that client card and
+// not in the account-wide strip.
+const STORE_SALES_CLIENT = 4;
+
+async function loadStoreFreshness(clientId) {
+  const el = document.getElementById("store-freshness-" + clientId);
+  if (!el) return;
+  try {
+    const rows = await supaFetch("data_freshness", "?select=*&source_key=eq.store");
+    if (!Array.isArray(rows) || !rows.length) { el.innerHTML = ""; return; }
+    const days = frDaysBehind(rows[0].last_day);
+    const cls = days === null ? "fr-bad" : days <= 1 ? "fr-ok" : days <= 2 ? "fr-warn" : "fr-bad";
+    el.innerHTML = "<span class=\"fr-item " + cls + "\" title=\"" + (rows[0].last_day || "") + "\">"
+      + "<span class=\"fr-dot\"></span>"
+      + "<span class=\"fr-label\">מכירות מהאתר</span>"
+      + "<span class=\"fr-when\">" + frWhen(days) + "</span></span>";
+  } catch (e) {
+    el.innerHTML = "";
+    console.warn("store freshness failed", e);
+  }
+}
+
 async function loadFreshness() {
   const el = document.getElementById("freshness-strip");
   if (!el) return;
   try {
-    const rows = await supaFetch("data_freshness", "?select=*");
+    let rows = await supaFetch("data_freshness", "?select=*");
     if (!Array.isArray(rows) || !rows.length) { el.innerHTML = ""; return; }
-    const order = { google:1, meta:2, clarity:3, store:4 };
+    // store_daily_sales is Asif-only (WooCommerce). It is rendered on the
+    // Asif client card instead, so it does not appear here as if it were
+    // an account-wide source.
+    rows = rows.filter(r => r.source_key !== "store");
+    const order = { google:1, meta:2, clarity:3 };
     rows.sort((a,b) => (order[a.source_key]||9) - (order[b.source_key]||9));
     el.innerHTML = rows.map(r => {
       const days = frDaysBehind(r.last_day);
