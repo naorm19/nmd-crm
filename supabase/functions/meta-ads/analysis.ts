@@ -292,181 +292,267 @@ function resultFieldFor(resultType: string) {
   return null;
 }
 
-function ruleZeroResultBurn(client: any, accountId: string, campaignRows: any[], campaignId: string, campaignName: string, resultType: string, thresholds: any, ruleTypes: Set<string>) {
-  const fields = resultFieldFor(resultType);
-  if (!fields) return [];
-  ruleTypes.add('ad_zero_result_burn');
+// ── Multi-window analysis (Naor, 2026-09-02) ─────────────────
+// Ad-level rules are evaluated over 7, 14 and 30 days rather than 7 alone,
+// so an alert can say whether a problem is a trend or just a bad week.
+// The 7-day window still decides whether an alert fires; the longer two
+// decide how loud it is, and are always attached as evidence.
+const ANALYSIS_WINDOWS = [7, 14, 30];
 
-  const through = (campaignRows as any)._through;
-  const last7 = campaignRows.filter(r => r.day >= isoDaysAgo(through, 6));
-  const totalResults = last7.reduce((s, r) => s + (Number(r[fields.countField]) || 0), 0);
-  const totalSpend = last7.reduce((s, r) => s + (Number(r.amount_spent) || 0), 0);
-  if (totalResults < thresholds.min_results_for_avg || totalSpend <= 0) return [];
+function windowRows(rows: any[], through: string, days: number) {
+  const from = isoDaysAgo(through, days - 1);
+  return rows.filter(r => r.day >= from && r.day <= through);
+}
 
-  const avgCost = totalSpend / totalResults;
-
-  const byAd: Record<string, any> = {};
-  for (const r of last7) {
-    if (!r.ad_id) continue;
-    byAd[r.ad_id] = byAd[r.ad_id] || { ad_name: r.ad_name, spend: 0, results: 0 };
-    byAd[r.ad_id].spend += Number(r.amount_spent) || 0;
-    byAd[r.ad_id].results += Number(r[fields.countField]) || 0;
+function aggregate(rows: any[], countField: string) {
+  let spend = 0, results = 0;
+  for (const r of rows) {
+    spend += Number(r.amount_spent) || 0;
+    results += Number(r[countField]) || 0;
   }
+  return { spend, results, cost: results > 0 ? spend / results : null };
+}
 
-  const out = [];
-  for (const [adId, d] of Object.entries(byAd)) {
-    if ((d as any).results > 0 || (d as any).spend <= 0) continue;
-    if ((d as any).spend < thresholds.min_spend_no_result) continue; // too small to be worth a task
-    const ratio = (d as any).spend / avgCost;
-    if (ratio >= thresholds.burning_critical_multiplier) {
-      out.push(makeBurnAlert('critical', client, accountId, campaignId, campaignName, adId, d, avgCost, resultType));
-    } else if (ratio >= thresholds.burning_warning_multiplier) {
-      out.push(makeBurnAlert('warning', client, accountId, campaignId, campaignName, adId, d, avgCost, resultType));
-    }
+function byAdIn(rows: any[], countField: string): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const r of rows) {
+    if (!r.ad_id) continue;
+    out[r.ad_id] = out[r.ad_id] || { ad_name: r.ad_name, spend: 0, results: 0 };
+    out[r.ad_id].spend += Number(r.amount_spent) || 0;
+    out[r.ad_id].results += Number(r[countField]) || 0;
   }
   return out;
 }
 
-function makeBurnAlert(severity: string, client: any, accountId: string, campaignId: string, campaignName: string, adId: string, d: any, avgCost: number, resultType: string) {
-  const label = ({ purchase: 'רכישות', message: 'שיחות', lead: 'לידים' } as Record<string, string>)[resultType] || 'תוצאות';
-  return {
-    severity, rule_type: 'ad_zero_result_burn', entity_level: 'ad', entity_id: adId,
-    entity_name: d.ad_name,
-    title: `${client.business_name} / ${d.ad_name}: הוצאה של ${d.spend.toFixed(0)}₪ ללא ${label}`,
-    explanation: `המודעה "${d.ad_name}" בקמפיין "${campaignName}" הוציאה ${d.spend.toFixed(0)}₪ ב-7 הימים האחרונים ולא הביאה אף ${label.slice(0, -1)}, מול עלות ממוצעת בקמפיין של ${avgCost.toFixed(1)}₪.`,
-    recommendation: severity === 'critical' ? 'לשקול השהיית המודעה ובדיקת הקריאייטיב/הטירגוט.' : 'לעקוב - אם ימשיך כך יומיים נוספים, לשקול השהיה.',
-    evidence_json: { campaign_id: campaignId, campaign_name: campaignName, ad_spend_7d: Number(d.spend.toFixed(2)), avg_cost_per_result: Number(avgCost.toFixed(2)), result_type: resultType }
-  };
+// Naor's question, in his words, is whether something is מגמתי. Answer it
+// explicitly rather than leaving three numbers for a human to compare.
+function trendVerdict(holds: Record<number, boolean>) {
+  const n = ANALYSIS_WINDOWS.filter(w => holds[w]).length;
+  if (n >= 3) return { level: 'trend', label: 'מגמתי - נמשך ב-7, 14 ו-30 יום' };
+  if (n === 2) return { level: 'building', label: 'מתחזק - נמשך בשניים מתוך שלושה חלונות' };
+  return { level: 'oneoff', label: 'חד פעמי - מופיע רק בשבוע האחרון' };
 }
 
-function ruleCreativeGap(client: any, accountId: string, campaignRows: any[], campaignId: string, campaignName: string, resultType: string, thresholds: any, ruleTypes: Set<string>) {
-  const fields = resultFieldFor(resultType);
-  if (!fields) return [];
-  ruleTypes.add('creative_gap');
+// A 7-day finding the longer windows do not support is downgraded, never
+// dropped: it stays visible as something to watch.
+function applyTrend(severity: string, verdict: any) {
+  if (verdict.level === 'trend') return severity;
+  if (verdict.level === 'building') return severity === 'critical' ? 'critical' : 'warning';
+  return severity === 'critical' ? 'warning' : 'info';
+}
 
-  const through = (campaignRows as any)._through;
-  const last7 = campaignRows.filter(r => r.day >= isoDaysAgo(through, 6));
-  const byAd: Record<string, any> = {};
-  for (const r of last7) {
-    if (!r.ad_id) continue;
-    byAd[r.ad_id] = byAd[r.ad_id] || { ad_name: r.ad_name, spend: 0, results: 0 };
-    byAd[r.ad_id].spend += Number(r.amount_spent) || 0;
-    byAd[r.ad_id].results += Number(r[fields.countField]) || 0;
-  }
-
-  const withCost = Object.entries(byAd)
-    .filter(([, d]) => (d as any).spend >= thresholds.creative_gap_min_spend && (d as any).results > 0)
-    .map(([adId, d]) => ({ adId, ...(d as any), cost: (d as any).spend / (d as any).results }));
-  if (withCost.length < 2) return [];
-
-  withCost.sort((a, b) => a.cost - b.cost);
-  const cheapest = withCost[0];
-  const priciest = withCost[withCost.length - 1];
-  const ratio = priciest.cost / cheapest.cost;
-  if (ratio < thresholds.creative_gap_multiplier) return [];
-
-  const label = ({ purchase: 'רכישה', message: 'שיחה', lead: 'ליד' } as Record<string, string>)[resultType] || 'תוצאה';
-
-  // When two distinct ads share the exact same display name, "X עולה Y לעומת X ב-Z"
-  // reads as meaningless to a human - disambiguate both mentions with a short ad_id suffix.
-  const sameName = priciest.ad_name === cheapest.ad_name;
-  const disambiguate = (name: string, adId: string) => sameName ? `${name} (#${adId.slice(-6)})` : name;
-  const priciestLabel = disambiguate(priciest.ad_name, priciest.adId);
-  const cheapestLabel = disambiguate(cheapest.ad_name, cheapest.adId);
-
-  return [{
-    severity: 'warning', rule_type: 'creative_gap', entity_level: 'campaign', entity_id: campaignId, entity_name: campaignName,
-    title: `${client.business_name} / ${campaignName}: פער קריאייטיב בין מודעות`,
-    explanation: `המודעה "${priciestLabel}" עולה ${priciest.cost.toFixed(1)}₪ ל${label} לעומת "${cheapestLabel}" ב-${cheapest.cost.toFixed(1)}₪ - פער של פי ${ratio.toFixed(1)} (7 ימים אחרונים, שתי המודעות עם הוצאה משמעותית).`,
-    recommendation: `לבדוק מה שונה בקריאייטיב/קהל של "${priciestLabel}" ולשקול הפניית תקציב ל"${cheapestLabel}".`,
-    evidence_json: {
-      campaign_id: campaignId, campaign_name: campaignName, result_type: resultType,
-      cheaper_ad: { name: cheapest.ad_name, spend_7d: Number(cheapest.spend.toFixed(2)), cost_per_result: Number(cheapest.cost.toFixed(2)) },
-      pricier_ad: { name: priciest.ad_name, spend_7d: Number(priciest.spend.toFixed(2)), cost_per_result: Number(priciest.cost.toFixed(2)) },
-      ratio: Number(ratio.toFixed(2))
+function windowEvidence(scopeRows: any[], through: string, countField: string, adId?: string) {
+  const ev: Record<string, any> = {};
+  for (const w of ANALYSIS_WINDOWS) {
+    const rows = windowRows(scopeRows, through, w);
+    const scope = aggregate(rows, countField);
+    const entry: Record<string, any> = {
+      scope_spend: Number(scope.spend.toFixed(2)),
+      scope_results: scope.results,
+      scope_cost_per_result: scope.cost == null ? null : Number(scope.cost.toFixed(2))
+    };
+    if (adId) {
+      const ad = byAdIn(rows, countField)[adId];
+      entry.ad_spend = ad ? Number(ad.spend.toFixed(2)) : 0;
+      entry.ad_results = ad ? ad.results : 0;
+      entry.ad_cost_per_result = ad && ad.results > 0 ? Number((ad.spend / ad.results).toFixed(2)) : null;
     }
-  }];
+    ev['d' + w] = entry;
+  }
+  return ev;
 }
 
-function ruleAdBudgetConcentration(client: any, accountId: string, campaignRows: any[], campaignId: string, campaignName: string, resultType: string, thresholds: any, ruleTypes: Set<string>) {
+// Scope note, 2026-09-02: these four rules used to baseline on the whole
+// campaign. Naor: ad sets inside one campaign target different audiences,
+// so a campaign average compares things that were never comparable.
+// Measured on Asif the same day, campaign 1 held two ad sets at 13 and 198
+// per purchase on near-identical spend, blending to a meaningless 23.78.
+// They now take ad set rows and an ad set baseline. Campaign level
+// survives only for pacing, and for CPM/frequency where a finer slice
+// would destroy the signal.
+
+function ruleZeroResultBurn(client: any, accountId: string, adsetRows: any[], scope: any, resultType: string, thresholds: any, ruleTypes: Set<string>) {
   const fields = resultFieldFor(resultType);
   if (!fields) return [];
-  ruleTypes.add('ad_budget_concentration');
+  ruleTypes.add('ad_zero_result_burn');
 
-  const through = (campaignRows as any)._through;
-  const last7 = campaignRows.filter(r => r.day >= isoDaysAgo(through, 6));
-  const byAd: Record<string, any> = {};
-  let campaignSpend = 0, campaignResults = 0;
-  for (const r of last7) {
-    if (!r.ad_id) continue;
-    byAd[r.ad_id] = byAd[r.ad_id] || { ad_name: r.ad_name, spend: 0, results: 0 };
-    byAd[r.ad_id].spend += Number(r.amount_spent) || 0;
-    byAd[r.ad_id].results += Number(r[fields.countField]) || 0;
-    campaignSpend += Number(r.amount_spent) || 0;
-    campaignResults += Number(r[fields.countField]) || 0;
-  }
-  if (campaignResults < thresholds.min_results_for_avg || campaignSpend <= 0) return [];
-  const avgCost = campaignSpend / campaignResults;
+  const through = scope.through;
+  const last7 = windowRows(adsetRows, through, 7);
+  const base7 = aggregate(last7, fields.countField);
+  if (base7.results < thresholds.min_results_for_avg || base7.spend <= 0) return [];
+  const avgCost = base7.cost as number;
 
-  const withResults = Object.entries(byAd).filter(([, d]) => (d as any).results > 0);
-  let bestAdId: string | null = null, bestCost = Infinity;
-  for (const [adId, d] of withResults) {
-    const cost = (d as any).spend / (d as any).results;
-    if (cost < bestCost) { bestCost = cost; bestAdId = adId; }
-  }
-
-  const out = [];
-  for (const [adId, d0] of Object.entries(byAd)) {
+  const out: any[] = [];
+  for (const [adId, d0] of Object.entries(byAdIn(last7, fields.countField))) {
     const d = d0 as any;
-    if (d.results === 0 || d.spend <= 0) continue;
-    if (adId === bestAdId) continue;
-    const budgetSharePct = (d.spend / campaignSpend) * 100;
-    if (budgetSharePct <= thresholds.ad_concentration_budget_pct) continue;
-    const adCost = d.spend / d.results;
-    const underperformPct = ((adCost - avgCost) / avgCost) * 100;
-    if (underperformPct < thresholds.ad_concentration_perf_gap_pct) continue;
+    if (d.results > 0 || d.spend <= 0) continue;
+    const ratio = d.spend / avgCost;
+    let severity: string | null = null;
+    if (ratio >= thresholds.burning_critical_multiplier) severity = 'critical';
+    else if (ratio >= thresholds.burning_warning_multiplier) severity = 'warning';
+    if (!severity) continue;
 
+    const holds: Record<number, boolean> = {};
+    for (const w of ANALYSIS_WINDOWS) {
+      const ad = byAdIn(windowRows(adsetRows, through, w), fields.countField)[adId];
+      holds[w] = !ad || ad.results === 0;
+    }
+    const verdict = trendVerdict(holds);
+    const windows = windowEvidence(adsetRows, through, fields.countField, adId);
+    const label = ({ purchase: 'רכישות', message: 'שיחות', lead: 'לידים' } as Record<string, string>)[resultType] || 'תוצאות';
+    const d30 = windows.d30 || {};
     out.push({
-      severity: 'warning', rule_type: 'ad_budget_concentration', entity_level: 'ad', entity_id: adId, entity_name: d.ad_name,
-      title: `${client.business_name} / ${d.ad_name}: ריכוז תקציב במודעה חלשה`,
-      explanation: `המודעה "${d.ad_name}" בקמפיין "${campaignName}" צרכה ${budgetSharePct.toFixed(0)}% מתקציב הקמפיין (7 ימים) ועלות התוצאה שלה (${adCost.toFixed(1)}₪) גרועה ב-${underperformPct.toFixed(0)}% מהממוצע בקמפיין (${avgCost.toFixed(1)}₪).`,
-      recommendation: 'לשקול הקטנת תקציב למודעה זו לטובת מודעות עם עלות תוצאה טובה יותר.',
+      severity: applyTrend(severity, verdict),
+      rule_type: 'ad_zero_result_burn', entity_level: 'ad', entity_id: adId, entity_name: d.ad_name,
+      title: `${client.business_name} / ${d.ad_name}: הוצאה של ${d.spend.toFixed(0)} ללא ${label}`,
+      explanation: `המודעה "${d.ad_name}" באד סט "${scope.adsetName}" (קמפיין "${scope.campaignName}") הוציאה ${d.spend.toFixed(0)} ב-7 הימים האחרונים ללא אף תוצאה, מול עלות ממוצעת באד סט של ${avgCost.toFixed(1)}. ב-30 יום: הוצאה ${Number(d30.ad_spend || 0).toFixed(0)} מול ${d30.ad_results || 0} ${label}. ${verdict.label}.`,
+      recommendation: verdict.level === 'trend'
+        ? 'הבעיה נמשכת בכל שלושת החלונות. לשקול השהיית המודעה.'
+        : 'עדיין לא מגמה מלאה. להמשיך מעקב לפני השהיה.',
       evidence_json: {
-        campaign_id: campaignId, campaign_name: campaignName, result_type: resultType,
-        ad_spend_7d: Number(d.spend.toFixed(2)), budget_share_pct: Number(budgetSharePct.toFixed(1)),
-        ad_cost_per_result: Number(adCost.toFixed(2)), campaign_avg_cost_per_result: Number(avgCost.toFixed(2)),
-        underperform_pct: Number(underperformPct.toFixed(1))
+        campaign_id: scope.campaignId, campaign_name: scope.campaignName,
+        adset_id: scope.adsetId, adset_name: scope.adsetName,
+        baseline_level: 'adset', result_type: resultType,
+        adset_avg_cost_per_result: Number(avgCost.toFixed(2)),
+        trend: verdict.level, trend_label: verdict.label, windows
       }
     });
   }
   return out;
 }
 
-// Positive counterpart to ruleAdBudgetConcentration/ruleCreativeGap - those
-// only ever surface a problem (an ad burning budget or a cost gap). Naor
-// asked to also see which ad is actually working well, not just what's
-// broken, so this flags the ad beating its own campaign's average cost per
-// result by a healthy margin as an 'info' alert with a scale-up
-// recommendation, not a warning/critical.
-function ruleWinningAd(client: any, accountId: string, campaignRows: any[], campaignId: string, campaignName: string, resultType: string, thresholds: any, ruleTypes: Set<string>) {
+function ruleCreativeGap(client: any, accountId: string, adsetRows: any[], scope: any, resultType: string, thresholds: any, ruleTypes: Set<string>) {
+  const fields = resultFieldFor(resultType);
+  if (!fields) return [];
+  ruleTypes.add('creative_gap');
+  const through = scope.through;
+
+  const gapIn = (days: number) => {
+    const rows = windowRows(adsetRows, through, days);
+    const withCost = Object.entries(byAdIn(rows, fields.countField))
+      .map(([adId, d0]) => { const d = d0 as any; return { adId, ad_name: d.ad_name, spend: d.spend, results: d.results, cost: d.results > 0 ? d.spend / d.results : Infinity }; })
+      .filter(x => x.spend >= thresholds.creative_gap_min_spend && x.results > 0)
+      .sort((x, y) => x.cost - y.cost);
+    if (withCost.length < 2) return null;
+    const cheapest = withCost[0];
+    const priciest = withCost[withCost.length - 1];
+    return { cheapest, priciest, ratio: priciest.cost / cheapest.cost };
+  };
+
+  const g7 = gapIn(7);
+  if (!g7 || g7.ratio < thresholds.creative_gap_multiplier) return [];
+
+  const holds: Record<number, boolean> = {};
+  const ratios: Record<string, number | null> = {};
+  for (const w of ANALYSIS_WINDOWS) {
+    const g = gapIn(w);
+    holds[w] = !!g && g.ratio >= thresholds.creative_gap_multiplier;
+    ratios['d' + w] = g ? Number(g.ratio.toFixed(2)) : null;
+  }
+  const verdict = trendVerdict(holds);
+  const label = ({ purchase: 'רכישה', message: 'שיחה', lead: 'ליד' } as Record<string, string>)[resultType] || 'תוצאה';
+  const say = (v: any) => (v == null ? 'אין נתון' : String(v));
+
+  return [{
+    severity: applyTrend('warning', verdict),
+    rule_type: 'creative_gap', entity_level: 'adset', entity_id: scope.adsetId, entity_name: scope.adsetName,
+    title: `${client.business_name} / ${scope.adsetName}: פער קריאייטיב בין מודעות`,
+    explanation: `באד סט "${scope.adsetName}" (קמפיין "${scope.campaignName}") המודעה "${g7.priciest.ad_name}" עולה ${g7.priciest.cost.toFixed(1)} ל${label} לעומת "${g7.cheapest.ad_name}" ב-${g7.cheapest.cost.toFixed(1)}, פער של פי ${g7.ratio.toFixed(1)} ב-7 ימים. פי ${say(ratios.d14)} ב-14 יום ופי ${say(ratios.d30)} ב-30 יום. ${verdict.label}.`,
+    recommendation: verdict.level === 'trend'
+      ? `הפער עקבי בכל שלושת החלונות. לשקול הפניית תקציב ל"${g7.cheapest.ad_name}".`
+      : 'הפער עדיין לא עקבי לאורך זמן. לבדוק שוב לפני הזזת תקציב.',
+    evidence_json: {
+      campaign_id: scope.campaignId, campaign_name: scope.campaignName,
+      adset_id: scope.adsetId, adset_name: scope.adsetName,
+      baseline_level: 'adset', result_type: resultType,
+      cheaper_ad: { name: g7.cheapest.ad_name, spend_7d: Number(g7.cheapest.spend.toFixed(2)), cost_per_result: Number(g7.cheapest.cost.toFixed(2)) },
+      pricier_ad: { name: g7.priciest.ad_name, spend_7d: Number(g7.priciest.spend.toFixed(2)), cost_per_result: Number(g7.priciest.cost.toFixed(2)) },
+      ratio_by_window: ratios, trend: verdict.level, trend_label: verdict.label
+    }
+  }];
+}
+
+function ruleAdBudgetConcentration(client: any, accountId: string, adsetRows: any[], scope: any, resultType: string, thresholds: any, ruleTypes: Set<string>) {
+  const fields = resultFieldFor(resultType);
+  if (!fields) return [];
+  ruleTypes.add('ad_budget_concentration');
+  const through = scope.through;
+
+  const last7 = windowRows(adsetRows, through, 7);
+  const base7 = aggregate(last7, fields.countField);
+  if (base7.results < thresholds.min_results_for_avg || base7.spend <= 0) return [];
+  const avgCost = base7.cost as number;
+  const byAd = byAdIn(last7, fields.countField);
+
+  let bestAdId: string | null = null, bestCost = Infinity;
+  for (const [adId, d0] of Object.entries(byAd)) {
+    const d = d0 as any;
+    if (d.results <= 0) continue;
+    const cost = d.spend / d.results;
+    if (cost < bestCost) { bestCost = cost; bestAdId = adId; }
+  }
+
+  const holdsFor = (adId: string, w: number) => {
+    const rows = windowRows(adsetRows, through, w);
+    const base = aggregate(rows, fields.countField);
+    const ad = byAdIn(rows, fields.countField)[adId];
+    if (!ad || ad.results <= 0 || base.cost == null || base.spend <= 0) return false;
+    const share = (ad.spend / base.spend) * 100;
+    const gap = (((ad.spend / ad.results) - base.cost) / base.cost) * 100;
+    return share > thresholds.ad_concentration_budget_pct && gap >= thresholds.ad_concentration_perf_gap_pct;
+  };
+
+  const out: any[] = [];
+  for (const [adId, d0] of Object.entries(byAd)) {
+    const d = d0 as any;
+    if (d.results === 0 || d.spend <= 0) continue;
+    if (adId === bestAdId) continue;
+    const budgetSharePct = (d.spend / base7.spend) * 100;
+    if (budgetSharePct <= thresholds.ad_concentration_budget_pct) continue;
+    const adCost = d.spend / d.results;
+    const underperformPct = ((adCost - avgCost) / avgCost) * 100;
+    if (underperformPct < thresholds.ad_concentration_perf_gap_pct) continue;
+
+    const holds: Record<number, boolean> = {};
+    for (const w of ANALYSIS_WINDOWS) holds[w] = holdsFor(adId, w);
+    const verdict = trendVerdict(holds);
+
+    out.push({
+      severity: applyTrend('warning', verdict),
+      rule_type: 'ad_budget_concentration', entity_level: 'ad', entity_id: adId, entity_name: d.ad_name,
+      title: `${client.business_name} / ${d.ad_name}: ריכוז תקציב במודעה חלשה`,
+      explanation: `המודעה "${d.ad_name}" צרכה ${budgetSharePct.toFixed(0)}% מתקציב האד סט "${scope.adsetName}" ב-7 ימים, ועלות התוצאה שלה (${adCost.toFixed(1)}) גרועה ב-${underperformPct.toFixed(0)}% מהממוצע באד סט (${avgCost.toFixed(1)}). ${verdict.label}.`,
+      recommendation: verdict.level === 'trend'
+        ? 'הדפוס חוזר בכל שלושת החלונות. לשקול הקטנת תקציב למודעה זו.'
+        : 'עדיין לא דפוס יציב. לעקוב לפני שינוי תקציב.',
+      evidence_json: {
+        campaign_id: scope.campaignId, campaign_name: scope.campaignName,
+        adset_id: scope.adsetId, adset_name: scope.adsetName,
+        baseline_level: 'adset', result_type: resultType,
+        ad_spend_7d: Number(d.spend.toFixed(2)), budget_share_pct: Number(budgetSharePct.toFixed(1)),
+        ad_cost_per_result: Number(adCost.toFixed(2)), adset_avg_cost_per_result: Number(avgCost.toFixed(2)),
+        underperform_pct: Number(underperformPct.toFixed(1)),
+        trend: verdict.level, trend_label: verdict.label,
+        windows: windowEvidence(adsetRows, through, fields.countField, adId)
+      }
+    });
+  }
+  return out;
+}
+
+// A winning ad is only meaningfully 'winning' against the other ads shown
+// to the SAME audience, so this baselines on the ad set too.
+function ruleWinningAd(client: any, accountId: string, adsetRows: any[], scope: any, resultType: string, thresholds: any, ruleTypes: Set<string>) {
   const fields = resultFieldFor(resultType);
   if (!fields) return [];
   ruleTypes.add('winning_ad');
+  const through = scope.through;
 
-  const through = (campaignRows as any)._through;
-  const last7 = campaignRows.filter(r => r.day >= isoDaysAgo(through, 6));
-  const byAd: Record<string, any> = {};
-  let campaignSpend = 0, campaignResults = 0;
-  for (const r of last7) {
-    if (!r.ad_id) continue;
-    byAd[r.ad_id] = byAd[r.ad_id] || { ad_name: r.ad_name, spend: 0, results: 0 };
-    byAd[r.ad_id].spend += Number(r.amount_spent) || 0;
-    byAd[r.ad_id].results += Number(r[fields.countField]) || 0;
-    campaignSpend += Number(r.amount_spent) || 0;
-    campaignResults += Number(r[fields.countField]) || 0;
-  }
-  if (campaignResults < thresholds.min_results_for_avg || campaignSpend <= 0) return [];
-  const avgCost = campaignSpend / campaignResults;
+  const last7 = windowRows(adsetRows, through, 7);
+  const base7 = aggregate(last7, fields.countField);
+  if (base7.results < thresholds.min_results_for_avg || base7.spend <= 0) return [];
+  const avgCost = base7.cost as number;
+  const byAd = byAdIn(last7, fields.countField);
 
   let bestAdId: string | null = null, bestCost = Infinity;
   for (const [adId, d0] of Object.entries(byAd)) {
@@ -481,16 +567,33 @@ function ruleWinningAd(client: any, accountId: string, campaignRows: any[], camp
   const outperformPct = ((avgCost - bestCost) / avgCost) * 100;
   if (outperformPct < thresholds.winning_ad_outperform_pct) return [];
 
+  // Is it consistently the cheapest, or did it just have a good week?
+  const holds: Record<number, boolean> = {};
+  for (const w of ANALYSIS_WINDOWS) {
+    const rows = windowRows(adsetRows, through, w);
+    const base = aggregate(rows, fields.countField);
+    const ad = byAdIn(rows, fields.countField)[bestAdId];
+    holds[w] = !!ad && ad.results > 0 && base.cost != null
+      && ((((base.cost as number) - (ad.spend / ad.results)) / (base.cost as number)) * 100) >= thresholds.winning_ad_outperform_pct;
+  }
+  const verdict = trendVerdict(holds);
   const label = ({ purchase: 'רכישה', message: 'שיחה', lead: 'ליד' } as Record<string, string>)[resultType] || 'תוצאה';
+
   return [{
     severity: 'info', rule_type: 'winning_ad', entity_level: 'ad', entity_id: bestAdId, entity_name: d.ad_name,
     title: `${client.business_name} / ${d.ad_name}: מודעה מנצחת`,
-    explanation: `המודעה "${d.ad_name}" בקמפיין "${campaignName}" עלתה ${bestCost.toFixed(1)}₪ ל${label} ב-7 הימים האחרונים - זול ב-${outperformPct.toFixed(0)}% מהממוצע בקמפיין (${avgCost.toFixed(1)}₪), עם הוצאה של ${d.spend.toFixed(0)}₪.`,
-    recommendation: 'לשקול הגדלת תקציב למודעה הזו - היא מביאה תוצאות בעלות נמוכה משמעותית מהממוצע.',
+    explanation: `המודעה "${d.ad_name}" באד סט "${scope.adsetName}" (קמפיין "${scope.campaignName}") עלתה ${bestCost.toFixed(1)} ל${label} ב-7 הימים האחרונים, זול ב-${outperformPct.toFixed(0)}% מהממוצע באד סט (${avgCost.toFixed(1)}), עם הוצאה של ${d.spend.toFixed(0)}. ${verdict.label}.`,
+    recommendation: verdict.level === 'trend'
+      ? 'מנצחת עקבית בכל שלושת החלונות. זו המודעה להגדיל לה תקציב.'
+      : 'שבוע טוב, עדיין לא מגמה. לוודא שהיא מחזיקה לפני הגדלת תקציב.',
     evidence_json: {
-      campaign_id: campaignId, campaign_name: campaignName, result_type: resultType,
+      campaign_id: scope.campaignId, campaign_name: scope.campaignName,
+      adset_id: scope.adsetId, adset_name: scope.adsetName,
+      baseline_level: 'adset', result_type: resultType,
       ad_spend_7d: Number(d.spend.toFixed(2)), ad_cost_per_result: Number(bestCost.toFixed(2)),
-      campaign_avg_cost_per_result: Number(avgCost.toFixed(2)), outperform_pct: Number(outperformPct.toFixed(1))
+      adset_avg_cost_per_result: Number(avgCost.toFixed(2)), outperform_pct: Number(outperformPct.toFixed(1)),
+      trend: verdict.level, trend_label: verdict.label,
+      windows: windowEvidence(adsetRows, through, fields.countField, bestAdId)
     }
   }];
 }
@@ -622,13 +725,26 @@ export async function runAnalysis(supabase: SupabaseClient, dataThrough: string)
     const client = clientById[mapping.client_id];
     if (!client) continue;
 
-    const { data: rows, error: rErr } = await supabase
-      .from('meta_ad_daily')
-      .select('*')
-      .eq('account_id', mapping.account_id)
-      .gte('day', since)
-      .lte('day', dataThrough);
-    if (rErr || !rows || rows.length === 0) continue;
+    // Paged deliberately. PostgREST caps an unbounded select at 1000 rows,
+    // and Asif alone has ~2,240 rows in this 40-day window, so the engine
+    // had been silently analysing under half of the biggest account.
+    // Found 2026-09-02. Never collapse this back into a single select.
+    const rows: any[] = [];
+    let rErr: any = null;
+    for (let from = 0; ; from += 1000) {
+      const { data: page, error } = await supabase
+        .from('meta_ad_daily')
+        .select('*')
+        .eq('account_id', mapping.account_id)
+        .gte('day', since)
+        .lte('day', dataThrough)
+        .order('day', { ascending: true })
+        .range(from, from + 999);
+      if (error) { rErr = error; break; }
+      rows.push(...((page || []) as any[]));
+      if (!page || page.length < 1000) break;
+    }
+    if (rErr || rows.length === 0) continue;
     (rows as any)._through = dataThrough;
     accountsAnalyzed++;
 
@@ -660,11 +776,27 @@ export async function runAnalysis(supabase: SupabaseClient, dataThrough: string)
       const resultType = cfg ? cfg.result_type : 'none';
       const thresholds = mergeThresholds(DEFAULT_THRESHOLDS, cfg && cfg.thresholds);
 
+      // Ad-level rules run per AD SET, not per campaign (Naor, 2026-09-02).
+      // Two ad sets in one campaign are two different audiences, so a
+      // campaign average is not a baseline any ad should be judged against.
       if (['purchase', 'message', 'lead'].includes(resultType)) {
-        candidates.push(...ruleZeroResultBurn(client, mapping.account_id, campaignRows, campaignId, campaignName, resultType, thresholds, ruleTypesEvaluated));
-        candidates.push(...ruleCreativeGap(client, mapping.account_id, campaignRows, campaignId, campaignName, resultType, thresholds, ruleTypesEvaluated));
-        candidates.push(...ruleAdBudgetConcentration(client, mapping.account_id, campaignRows, campaignId, campaignName, resultType, thresholds, ruleTypesEvaluated));
-        candidates.push(...ruleWinningAd(client, mapping.account_id, campaignRows, campaignId, campaignName, resultType, thresholds, ruleTypesEvaluated));
+        const byAdset: Record<string, any[]> = {};
+        for (const r of campaignRows) {
+          const key = r.adset_id || '(no-adset)';
+          byAdset[key] = byAdset[key] || [];
+          byAdset[key].push(r);
+        }
+        for (const [adsetId, adsetRows] of Object.entries(byAdset)) {
+          const scope = {
+            campaignId, campaignName, adsetId,
+            adsetName: (adsetRows.find((r: any) => r.adset_name) || {}).adset_name || 'אד סט ללא שם',
+            through: dataThrough
+          };
+          candidates.push(...ruleZeroResultBurn(client, mapping.account_id, adsetRows, scope, resultType, thresholds, ruleTypesEvaluated));
+          candidates.push(...ruleCreativeGap(client, mapping.account_id, adsetRows, scope, resultType, thresholds, ruleTypesEvaluated));
+          candidates.push(...ruleAdBudgetConcentration(client, mapping.account_id, adsetRows, scope, resultType, thresholds, ruleTypesEvaluated));
+          candidates.push(...ruleWinningAd(client, mapping.account_id, adsetRows, scope, resultType, thresholds, ruleTypesEvaluated));
+        }
       }
 
       candidates.push(...ruleTrendSpike(client, mapping.account_id, campaignRows, campaignId, campaignName, 'cpm', 'cpm_spike', 'CPM', thresholds, ruleTypesEvaluated));
