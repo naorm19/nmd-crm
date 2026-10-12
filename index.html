@@ -1539,6 +1539,10 @@ async function loadCrmPanel(clientId, from, to, label, sym, spend) {
   const n = (v) => Number(v || 0).toLocaleString('he-IL');
   const known = (st.answered || 0) + (st.missed || 0);
   const rate = known ? Math.round((st.answered / known) * 100) : null;
+  // Cost per lead only for a range the CRM fully covers: before it was connected there was spend and no leads.
+  const sinceDay = st.since ? new Date(st.since).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }) : null;
+  const covered = sinceDay && from >= sinceDay;
+  const sinceLabel = sinceDay ? new Date(st.since).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Jerusalem' }) : null;
   const cpl = spend > 0 && st.leads > 0 ? sym + Math.round(spend / st.leads).toLocaleString('he-IL') : '-';
   const sources = Object.entries(st.by_source || {}).sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${CRM_SOURCE_LABEL[k] || k} ${n(v)}`).join(' · ');
@@ -1558,12 +1562,13 @@ async function loadCrmPanel(clientId, from, to, label, sym, spend) {
     </div>
     <div class="kpi-grid" style="margin-bottom:0">
       ${card('פניות חדשות', n(st.leads), label, 'var(--green)')}
-      ${card('עלות לפנייה לפי ה-CRM', cpl, 'הוצאה חלקי פניות חדשות', 'var(--yellow)')}
+      ${covered ? card('עלות לפנייה לפי ה-CRM', cpl, 'הוצאה חלקי פניות חדשות', 'var(--yellow)') : ''}
       ${st.calls ? card('שיחות', n(st.calls), `${n(st.answered)} נענו · ${n(st.missed)} לא נענו`) : ''}
       ${rate !== null ? card('אחוז מענה', rate + '%', 'מתוך השיחות בטווח', rate >= 80 ? 'var(--green)' : 'var(--yellow)') : ''}
       ${card('ממתינות לטיפול', n(st.waiting), 'עכשיו, בלי קשר לטווח', st.waiting ? 'var(--yellow)' : 'var(--text)')}
     </div>
     ${sources ? `<div style="font-size:12.5px;color:var(--muted2);margin-top:12px">מקורות הפניות: ${sources}</div>` : ''}
+    ${!covered && sinceLabel ? `<div style="font-size:12px;color:var(--muted);margin-top:8px">המערכת קולטת פניות מ-${sinceLabel}. עלות לפנייה תופיע בטווח שמתחיל מהתאריך הזה.</div>` : ''}
   </div>`;
 }
 
