@@ -62,6 +62,12 @@ const DEFAULT_THRESHOLDS = {
   min_spend_no_result: 150 // an ad/campaign must spend at least this much with zero results before it's worth flagging
 };
 
+// Naor, 2026-09-08: no more CPM alerts on Asif. Every other account keeps
+// them. The rule type is still registered as evaluated so CPM alerts that
+// are already open on Asif resolve themselves on the next run instead of
+// hanging around forever with nothing left to close them.
+const CPM_MUTED_ACCOUNTS = new Set(['652805331965328']);
+
 function mergeThresholds(base: typeof DEFAULT_THRESHOLDS, override: unknown) {
   return { ...base, ...(override && typeof override === 'object' ? override : {}) };
 }
@@ -385,7 +391,7 @@ function ruleZeroResultBurn(client: any, accountId: string, adsetRows: any[], sc
   const out: any[] = [];
   for (const [adId, d0] of Object.entries(byAdIn(last7, fields.countField))) {
     const d = d0 as any;
-    if (d.results > 0 || d.spend <= 0) continue;
+    if (d.results > 0 || d.spend < thresholds.min_spend_no_result) continue;
     const ratio = d.spend / avgCost;
     let severity: string | null = null;
     if (ratio >= thresholds.burning_critical_multiplier) severity = 'critical';
@@ -799,7 +805,11 @@ export async function runAnalysis(supabase: SupabaseClient, dataThrough: string)
         }
       }
 
-      candidates.push(...ruleTrendSpike(client, mapping.account_id, campaignRows, campaignId, campaignName, 'cpm', 'cpm_spike', 'CPM', thresholds, ruleTypesEvaluated));
+      if (CPM_MUTED_ACCOUNTS.has(mapping.account_id)) {
+        ruleTypesEvaluated.add('cpm_spike');
+      } else {
+        candidates.push(...ruleTrendSpike(client, mapping.account_id, campaignRows, campaignId, campaignName, 'cpm', 'cpm_spike', 'CPM', thresholds, ruleTypesEvaluated));
+      }
       candidates.push(...ruleTrendSpike(client, mapping.account_id, campaignRows, campaignId, campaignName, 'frequency', 'frequency_spike', 'Frequency', thresholds, ruleTypesEvaluated));
 
       if (resultType === 'video' && mapping.account_id === '2885542151561931') {

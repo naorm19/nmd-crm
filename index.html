@@ -1381,6 +1381,7 @@ async function showClient(clientId, dateMode) {
         </div>
       ` : ''}
     </div>
+    <div id="crm-panel-${c.id}"></div>
     <div class="budget-section" id="budget-section-${c.id}">${budgetSectionHtml}</div>
     ${c.meta_ad_account_id ? `<div id="meta-panel-${c.id}" class="chart-card" style="margin-bottom:16px">
       <div style="text-align:center;padding:20px;color:var(--muted);font-family:'Heebo',sans-serif;font-size:13px">⏳ טוען נתוני Meta Ads...</div>
@@ -1510,6 +1511,60 @@ async function showClient(clientId, dateMode) {
   if (DAILY_ROUTINE_CLIENTS.includes(c.id)) loadDailyRoutine(c.id);
   if (c.id === STORE_SALES_CLIENT) loadStoreFreshness(c.id);
   if (c.google_customer_id) loadGoogleGapBanner(c.id, sym);
+  loadCrmPanel(c.id, from, to, label, sym, ins.spend);
+}
+
+// ── NMD CRM panel: leads and phone calls the client's CRM received in
+//    the chosen range. crm_client_stats() returns counts only (never a
+//    person) and null for a client with no CRM organization, in which
+//    case nothing is shown. Migration 20261012020000_crm_dashboard_stats.sql.
+const CRM_APP_URL = 'https://nmd-crm.netlify.app';
+const CRM_SOURCE_LABEL = { facebook: 'פייסבוק', instagram: 'אינסטגרם', google: 'גוגל', tiktok: 'טיקטוק', website: 'האתר',
+  whatsapp: 'וואטסאפ', phone: 'טלפון', manual: 'ידני', other: 'אחר' };
+
+async function loadCrmPanel(clientId, from, to, label, sym, spend) {
+  const el = document.getElementById(`crm-panel-${clientId}`);
+  if (!el) return;
+  let st = null;
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/rpc/crm_client_stats`, {
+      method: 'POST',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_client_id: clientId, p_from: from, p_to: to }),
+    });
+    if (res.ok) st = await res.json();
+  } catch (e) { console.warn('crm panel', e); }
+  if (!st || !document.getElementById(`crm-panel-${clientId}`)) { el.innerHTML = ''; return; }
+
+  const n = (v) => Number(v || 0).toLocaleString('he-IL');
+  const known = (st.answered || 0) + (st.missed || 0);
+  const rate = known ? Math.round((st.answered / known) * 100) : null;
+  const cpl = spend > 0 && st.leads > 0 ? sym + Math.round(spend / st.leads).toLocaleString('he-IL') : '-';
+  const sources = Object.entries(st.by_source || {}).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${CRM_SOURCE_LABEL[k] || k} ${n(v)}`).join(' · ');
+  const last = st.last_at ? new Date(st.last_at).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'אין עדיין';
+  const card = (title, val, sub, color) => `<div class="kpi-card"><div class="kpi-label">${title}</div>
+    <div class="kpi-val" style="color:${color || 'var(--text)'}">${val}</div><div class="kpi-sub">${sub || ''}</div></div>`;
+
+  el.innerHTML = `<div class="chart-card" style="margin-bottom:16px;padding:20px 22px;font-family:'Heebo',sans-serif">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--muted);letter-spacing:1px;margin-bottom:4px">NMD CRM</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text)">פניות ושיחות שנכנסו למערכת</div>
+        <div style="font-size:12px;color:var(--muted2);margin-top:3px">פעילות אחרונה: ${last}</div>
+      </div>
+      <a href="${CRM_APP_URL}/#/all" target="_blank" rel="noopener"
+         style="font-size:13px;font-weight:600;color:var(--accent2);text-decoration:none;border:1px solid var(--border);border-radius:9px;padding:7px 12px">פתיחה ב-CRM</a>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:0">
+      ${card('פניות חדשות', n(st.leads), label, 'var(--green)')}
+      ${card('עלות לפנייה לפי ה-CRM', cpl, 'הוצאה חלקי פניות חדשות', 'var(--yellow)')}
+      ${st.calls ? card('שיחות', n(st.calls), `${n(st.answered)} נענו · ${n(st.missed)} לא נענו`) : ''}
+      ${rate !== null ? card('אחוז מענה', rate + '%', 'מתוך השיחות בטווח', rate >= 80 ? 'var(--green)' : 'var(--yellow)') : ''}
+      ${card('ממתינות לטיפול', n(st.waiting), 'עכשיו, בלי קשר לטווח', st.waiting ? 'var(--yellow)' : 'var(--text)')}
+    </div>
+    ${sources ? `<div style="font-size:12.5px;color:var(--muted2);margin-top:12px">מקורות הפניות: ${sources}</div>` : ''}
+  </div>`;
 }
 
 // ── Google Ads data-gap banner (freshness-check.js writes to `alerts`
@@ -3466,28 +3521,103 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
   drawAsifTimeSeries();
 
   // ── Chart 3: חלוקה לפי עיר (Doughnut) ───────────────────
+  const cityTotal = cityData.reduce((a,b) => a+b, 0);
+
+  // Percentage labels drawn on the slices themselves, plus the total in the
+  // doughnut hole. Inline plugin rather than chartjs-plugin-datalabels so the
+  // page keeps its existing CDN list.
+  const asifCityLabels = {
+    id: 'asifCityLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      const meta = chart.getDatasetMeta(0);
+      if (!meta || !meta.data || !cityTotal) return;
+      ctx.save();
+      meta.data.forEach((arc, i) => {
+        const pct = cityData[i] / cityTotal * 100;
+        // Below 4% the slice is too narrow to hold text without overlapping
+        // its neighbours. Those cities stay readable in the legend.
+        if (pct < 4) return;
+        const angle = (arc.startAngle + arc.endAngle) / 2;
+        const r     = arc.innerRadius + (arc.outerRadius - arc.innerRadius) * 0.55;
+        const x     = arc.x + Math.cos(angle) * r;
+        const y     = arc.y + Math.sin(angle) * r;
+        const txt   = Math.round(pct) + '%';
+        ctx.font         = '700 12px Heebo, sans-serif';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        // Dark halo so the white number stays legible on the lighter slices.
+        ctx.lineWidth   = 3;
+        ctx.strokeStyle = 'rgba(15,23,42,0.55)';
+        ctx.strokeText(txt, x, y);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(txt, x, y);
+      });
+      // Centre: total customers in the period.
+      const first = meta.data[0];
+      if (first) {
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#f1f5f9';
+        ctx.font = '700 22px Heebo, sans-serif';
+        ctx.fillText(cityTotal.toLocaleString(), first.x, first.y - 8);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '600 11px Heebo, sans-serif';
+        ctx.fillText('לקוחות', first.x, first.y + 12);
+      }
+      ctx.restore();
+    }
+  };
+
   asifChart3 = new Chart(document.getElementById('asif-chart-city').getContext('2d'), {
     type: 'doughnut',
+    plugins: [asifCityLabels],
     data: {
       labels: topCities,
       datasets: [{
         data: cityData,
         backgroundColor: PIE_COLORS.slice(0, topCities.length),
-        borderColor: '#1e293b', borderWidth: 2
+        borderColor: '#1e293b', borderWidth: 2,
+        hoverOffset: 8, hoverBorderColor: '#1e293b'
       }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
+      cutout: '58%',
+      layout: { padding: 6 },
       plugins: {
         legend: {
           position: 'right',
-          labels: { color:'#94a3b8', font:{family:'Heebo',size:11}, padding:10, boxWidth:12 }
+          labels: {
+            color:'#94a3b8', font:{family:'Heebo',size:11}, padding:10,
+            boxWidth:12, usePointStyle:true, pointStyle:'circle',
+            // City name plus its share, so every slice shows a percentage even
+            // when it was too thin to label on the chart.
+            generateLabels(chart) {
+              const ds = chart.data.datasets[0];
+              return chart.data.labels.map((label, i) => {
+                const pct = cityTotal ? (ds.data[i] / cityTotal * 100) : 0;
+                return {
+                  text: `${label}  ${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%`,
+                  fillStyle: ds.backgroundColor[i],
+                  strokeStyle: ds.backgroundColor[i],
+                  lineWidth: 0,
+                  hidden: !chart.getDataVisibility(i),
+                  index: i
+                };
+              });
+            }
+          }
         },
         tooltip: {
+          backgroundColor: '#1e293b',
+          borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1,
+          padding: 10,
+          titleFont: { family:'Heebo', size:12 },
+          bodyFont:  { family:'Heebo', size:12, weight:'600' },
           callbacks: {
             label: i => {
-              const total = cityData.reduce((a,b)=>a+b, 0);
-              const pct   = ((i.parsed/total)*100).toFixed(1);
+              const pct = cityTotal ? ((i.parsed/cityTotal)*100).toFixed(1) : '0.0';
               return `${i.label}: ${i.parsed} לקוחות (${pct}%)`;
             }
           }
