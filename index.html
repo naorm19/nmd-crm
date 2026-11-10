@@ -3528,7 +3528,7 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
   // ── Chart 3: חלוקה לפי עיר (Doughnut) ───────────────────
   const cityTotal = cityData.reduce((a,b) => a+b, 0);
 
-  // Percentage labels drawn on the slices themselves, plus the total in the
+  // Customer counts drawn on the slices themselves, plus the total in the
   // doughnut hole. Inline plugin rather than chartjs-plugin-datalabels so the
   // page keeps its existing CDN list.
   const asifCityLabels = {
@@ -3547,7 +3547,7 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
         const r     = arc.innerRadius + (arc.outerRadius - arc.innerRadius) * 0.55;
         const x     = arc.x + Math.cos(angle) * r;
         const y     = arc.y + Math.sin(angle) * r;
-        const txt   = Math.round(pct) + '%';
+        const txt   = cityData[i].toLocaleString('he-IL');
         ctx.font         = '700 12px Heebo, sans-serif';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
@@ -3596,14 +3596,13 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
           labels: {
             color:'#94a3b8', font:{family:'Heebo',size:11}, padding:10,
             boxWidth:12, usePointStyle:true, pointStyle:'circle',
-            // City name plus its share, so every slice shows a percentage even
+            // City name plus its count, so every slice shows a number even
             // when it was too thin to label on the chart.
             generateLabels(chart) {
               const ds = chart.data.datasets[0];
               return chart.data.labels.map((label, i) => {
-                const pct = cityTotal ? (ds.data[i] / cityTotal * 100) : 0;
                 return {
-                  text: `${label}  ${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%`,
+                  text: `${label}  ${ds.data[i].toLocaleString('he-IL')}`,
                   fillStyle: ds.backgroundColor[i],
                   strokeStyle: ds.backgroundColor[i],
                   // Chart.js 4 paints legend text with item.fontColor only, so a
