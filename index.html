@@ -815,7 +815,7 @@ function getMonthRange() {
 let currentDateMode    = 'yesterday';
 let currentClientId   = null;
 let aeroDuctSourceFilter = 'all'; // 'all' | 'google' | 'facebook'
-let asifChart1 = null, asifChart2 = null, asifChart3 = null;
+let asifChart1 = null, asifChart2 = null, asifChart3 = null, asifChart4 = null;
 let asifAllRows = [];
 let asifStoreRows = [];
 let asifViewMode = 'new'; // 'new' | 'total'
@@ -3331,8 +3331,8 @@ async function saveLastMonthCustomers(clientId) {
 // ── אסיף - לקוחות חדשים מ-Supabase ─────────────────────────
 async function renderAsifNewCustomers(clientId, from, to, label, sym) {
   // Destroy previous chart instances
-  [asifChart1, asifChart2, asifChart3].forEach(ch => { if (ch) { ch.destroy(); } });
-  asifChart1 = asifChart2 = asifChart3 = null;
+  [asifChart1, asifChart2, asifChart3, asifChart4].forEach(ch => { if (ch) { ch.destroy(); } });
+  asifChart1 = asifChart2 = asifChart3 = asifChart4 = null;
 
   const container = document.getElementById('asif-customers-container');
   if (!container) return;
@@ -3484,10 +3484,16 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
       </div>
       <div style="height:260px"><canvas id="asif-chart-daily"></canvas></div>
     </div>
-    <div class="chart-card" style="max-width:560px;margin:0 auto 20px">
+    <div class="chart-card" style="max-width:1040px;margin:0 auto 20px">
       <div id="asif-city-title" style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px;text-align:center">🗺️ חלוקה לפי עיר · לקוחות חדשים</div>
       <div id="asif-city-note" style="display:none;padding:40px 12px;text-align:center;color:var(--muted);font-size:12px"></div>
-      <div style="height:300px"><canvas id="asif-chart-city"></canvas></div>
+      <div id="asif-city-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));justify-content:center;gap:20px">
+        <div style="height:300px;min-width:0"><canvas id="asif-chart-city"></canvas></div>
+        <div id="asif-sharon-box" style="min-width:0">
+          <div id="asif-sharon-title" style="font-size:12px;font-weight:700;color:var(--muted2);text-align:center;margin-bottom:6px">פירוט השרון</div>
+          <div style="height:276px"><canvas id="asif-chart-sharon"></canvas></div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -3540,10 +3546,16 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
   drawAsifCityChart();
 }
 
-// Draws the city doughnut for the current view: new customers, or every paid
+// The six Sharon delivery cities (and Kfar Shmaryahu next to Herzliya). Sharon is
+// Avi's main goal, so the city doughnut shows it as one slice and breaks it down
+// in a second doughnut beside it (Naor, 10.11.2026).
+const ASIF_SHARON_RE = /הרצלי|הוד.?השרון|כפר.?סבא|פתח.?תקו|רעננ|רמת.?השרון|כפר.?שמריהו|herzl|kfar.?saba|petah|petach|raanana|ra'anana|hod.?hasharon|ramat.?hasharon/i;
+
+// Draws the city doughnuts for the current view: new customers, or every paid
 // order when the chart is switched to "סה״כ לקוחות".
 function drawAsifCityChart() {
-  if (asifChart3) { asifChart3.destroy(); asifChart3 = null; }
+  [asifChart3, asifChart4].forEach(ch => { if (ch) ch.destroy(); });
+  asifChart3 = asifChart4 = null;
   const canvas = document.getElementById('asif-chart-city');
   if (!canvas) return;
 
@@ -3554,8 +3566,9 @@ function drawAsifCityChart() {
   const title = document.getElementById('asif-city-title');
   if (title) title.textContent = `🗺️ חלוקה לפי עיר · ${isTotal ? 'כל ההזמנות' : 'לקוחות חדשים'}`;
   const note  = document.getElementById('asif-city-note');
+  const grid  = document.getElementById('asif-city-grid');
   const empty = !Object.keys(cityMap).length;
-  canvas.parentElement.style.display = empty ? 'none' : '';
+  if (grid) grid.style.display = empty ? 'none' : 'grid';
   if (note) {
     note.style.display = empty ? '' : 'none';
     note.textContent = isTotal && !asifCityAllMap
@@ -3564,36 +3577,64 @@ function drawAsifCityChart() {
   }
   if (empty) return;
 
-  const sortedCities = Object.keys(cityMap).sort((a,b) => cityMap[b]-cityMap[a]);
-  const TOP = 9;
-  const topCities    = sortedCities.slice(0, TOP);
-  const otherCount   = sortedCities.slice(TOP).reduce((s,c) => s+cityMap[c], 0);
-  if (otherCount > 0) topCities.push('אחר');
-  const cityData     = topCities.map(c => c==='אחר' ? otherCount : cityMap[c]);
-  const PIE_COLORS = ['#10b981','#3b82f6','#f59e0b','#a78bfa','#f43f5e','#06b6d4','#84cc16','#fb923c','#e879f9','#94a3b8'];
+  // Split into Sharon cities and everything else.
+  const sharonMap = {}, restMap = {};
+  Object.entries(cityMap).forEach(([c, n]) => { (ASIF_SHARON_RE.test(c) ? sharonMap : restMap)[c] = n; });
+  const sharonTotal = Object.values(sharonMap).reduce((a,b) => a+b, 0);
+  const grandTotal  = Object.values(cityMap).reduce((a,b) => a+b, 0);
 
-  const cityTotal = cityData.reduce((a,b) => a+b, 0);
+  // Main doughnut: the biggest cities outside the Sharon, the Sharon as one
+  // slice, and the rest under "אחר".
+  const SHARON_COLOR = '#3b82f6';
+  const REST_COLORS  = ['#10b981','#f59e0b','#a78bfa','#f43f5e','#06b6d4','#84cc16','#fb923c','#e879f9'];
+  const TOP = 8;
+  const restSorted = Object.keys(restMap).sort((a,b) => restMap[b]-restMap[a]);
+  const entries = restSorted.slice(0, TOP).map(c => ({ label: c, n: restMap[c] }));
+  if (sharonTotal > 0) entries.push({ label: 'שרון', n: sharonTotal, sharon: true });
+  entries.sort((a,b) => b.n - a.n);
+  const otherCount = restSorted.slice(TOP).reduce((s,c) => s+restMap[c], 0);
+  let ci = 0;
+  const mainColors = entries.map(e => e.sharon ? SHARON_COLOR : REST_COLORS[ci++ % REST_COLORS.length]);
+  if (otherCount > 0) { entries.push({ label: 'אחר', n: otherCount }); mainColors.push('#94a3b8'); }
+  asifChart3 = makeAsifDoughnut(canvas, entries.map(e => e.label), entries.map(e => e.n), mainColors, unit);
 
-  // Customer counts drawn on the slices themselves, plus the total in the
-  // doughnut hole. Inline plugin rather than chartjs-plugin-datalabels so the
-  // page keeps its existing CDN list.
-  const asifCityLabels = {
+  // Sharon breakdown beside it, in shades of the Sharon slice's blue.
+  const sharonBox = document.getElementById('asif-sharon-box');
+  if (sharonBox) sharonBox.style.display = sharonTotal > 0 ? '' : 'none';
+  if (grid) grid.style.gridTemplateColumns = sharonTotal > 0 ? 'repeat(auto-fit,minmax(320px,1fr))' : 'minmax(0,560px)';
+  if (sharonTotal > 0) {
+    const sTitle = document.getElementById('asif-sharon-title');
+    const share  = grandTotal ? Math.round(sharonTotal / grandTotal * 100) : 0;
+    if (sTitle) sTitle.textContent = `פירוט השרון · ${share}% מה${unit}`;
+    const sCities = Object.keys(sharonMap).sort((a,b) => sharonMap[b]-sharonMap[a]);
+    const BLUES = ['#1e40af','#2563eb','#60a5fa','#6366f1','#93c5fd','#818cf8','#38bdf8'];
+    asifChart4 = makeAsifDoughnut(document.getElementById('asif-chart-sharon'),
+      sCities, sCities.map(c => sharonMap[c]), sCities.map((_, i) => BLUES[i % BLUES.length]), unit, 'בשרון');
+  }
+}
+
+// One city doughnut: counts on the slices, the total in the hole, and a legend
+// with every city's count (so thin slices stay readable there).
+function makeAsifDoughnut(canvas, labels, data, colors, unit, centreLabel) {
+  const total = data.reduce((a,b) => a+b, 0);
+  // Inline plugin rather than chartjs-plugin-datalabels so the page keeps its
+  // existing CDN list.
+  const sliceLabels = {
     id: 'asifCityLabels',
     afterDatasetsDraw(chart) {
       const { ctx } = chart;
       const meta = chart.getDatasetMeta(0);
-      if (!meta || !meta.data || !cityTotal) return;
+      if (!meta || !meta.data || !total) return;
       ctx.save();
       meta.data.forEach((arc, i) => {
-        const pct = cityData[i] / cityTotal * 100;
         // Below 4% the slice is too narrow to hold text without overlapping
         // its neighbours. Those cities stay readable in the legend.
-        if (pct < 4) return;
+        if (data[i] / total * 100 < 4) return;
         const angle = (arc.startAngle + arc.endAngle) / 2;
         const r     = arc.innerRadius + (arc.outerRadius - arc.innerRadius) * 0.55;
         const x     = arc.x + Math.cos(angle) * r;
         const y     = arc.y + Math.sin(angle) * r;
-        const txt   = cityData[i].toLocaleString('he-IL');
+        const txt   = data[i].toLocaleString('he-IL');
         ctx.font         = '700 12px Heebo, sans-serif';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
@@ -3604,30 +3645,29 @@ function drawAsifCityChart() {
         ctx.fillStyle = '#ffffff';
         ctx.fillText(txt, x, y);
       });
-      // Centre: total customers in the period.
       const first = meta.data[0];
       if (first) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#f1f5f9';
         ctx.font = '700 22px Heebo, sans-serif';
-        ctx.fillText(cityTotal.toLocaleString(), first.x, first.y - 8);
+        ctx.fillText(total.toLocaleString('he-IL'), first.x, first.y - 8);
         ctx.fillStyle = '#94a3b8';
         ctx.font = '600 11px Heebo, sans-serif';
-        ctx.fillText(unit, first.x, first.y + 12);
+        ctx.fillText(centreLabel ? `${unit} ${centreLabel}` : unit, first.x, first.y + 12);
       }
       ctx.restore();
     }
   };
 
-  asifChart3 = new Chart(document.getElementById('asif-chart-city').getContext('2d'), {
+  return new Chart(canvas.getContext('2d'), {
     type: 'doughnut',
-    plugins: [asifCityLabels],
+    plugins: [sliceLabels],
     data: {
-      labels: topCities,
+      labels,
       datasets: [{
-        data: cityData,
-        backgroundColor: PIE_COLORS.slice(0, topCities.length),
+        data,
+        backgroundColor: colors,
         borderColor: '#1e293b', borderWidth: 2,
         hoverOffset: 8, hoverBorderColor: '#1e293b'
       }]
@@ -3642,23 +3682,19 @@ function drawAsifCityChart() {
           labels: {
             color:'#94a3b8', font:{family:'Heebo',size:11}, padding:10,
             boxWidth:12, usePointStyle:true, pointStyle:'circle',
-            // City name plus its count, so every slice shows a number even
-            // when it was too thin to label on the chart.
             generateLabels(chart) {
               const ds = chart.data.datasets[0];
-              return chart.data.labels.map((label, i) => {
-                return {
-                  text: `${label}  ${ds.data[i].toLocaleString('he-IL')}`,
-                  fillStyle: ds.backgroundColor[i],
-                  strokeStyle: ds.backgroundColor[i],
-                  // Chart.js 4 paints legend text with item.fontColor only, so a
-                  // custom item without it falls back to black on the dark card.
-                  fontColor: '#cbd5e1',
-                  lineWidth: 0,
-                  hidden: !chart.getDataVisibility(i),
-                  index: i
-                };
-              });
+              return chart.data.labels.map((label, i) => ({
+                text: `${label}  ${ds.data[i].toLocaleString('he-IL')}`,
+                fillStyle: ds.backgroundColor[i],
+                strokeStyle: ds.backgroundColor[i],
+                // Chart.js 4 paints legend text with item.fontColor only, so a
+                // custom item without it falls back to black on the dark card.
+                fontColor: '#cbd5e1',
+                lineWidth: 0,
+                hidden: !chart.getDataVisibility(i),
+                index: i
+              }));
             }
           }
         },
@@ -3670,8 +3706,8 @@ function drawAsifCityChart() {
           bodyFont:  { family:'Heebo', size:12, weight:'600' },
           callbacks: {
             label: i => {
-              const pct = cityTotal ? ((i.parsed/cityTotal)*100).toFixed(1) : '0.0';
-              return `${i.label}: ${i.parsed} ${unit} (${pct}%)`;
+              const pct = total ? ((i.parsed/total)*100).toFixed(1) : '0.0';
+              return `${i.label}: ${i.parsed.toLocaleString('he-IL')} ${unit} (${pct}%)`;
             }
           }
         }
