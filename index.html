@@ -819,6 +819,7 @@ let asifChart1 = null, asifChart2 = null, asifChart3 = null;
 let asifAllRows = [];
 let asifStoreRows = [];
 let asifViewMode = 'new'; // 'new' | 'total'
+let asifCityNewMap = null, asifCityAllMap = null; // city -> count, for the doughnut
 let asifChartPeriod = 'daily';
 let asifChartSym = '₪';
 let asifChartFrom = '';
@@ -3426,14 +3427,7 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
     const city = (r.city||'לא ידוע').trim();
     cityMap[city] = (cityMap[city]||0) + parseInt(r.count||0);
   });
-  const sortedCities = Object.keys(cityMap).sort((a,b) => cityMap[b]-cityMap[a]);
-  const TOP = 9;
-  const topCities    = sortedCities.slice(0, TOP);
-  const otherCount   = sortedCities.slice(TOP).reduce((s,c) => s+cityMap[c], 0);
-  if (otherCount > 0) topCities.push('אחר');
-  const cityData     = topCities.map(c => c==='אחר' ? otherCount : cityMap[c]);
-
-  const PIE_COLORS = ['#10b981','#3b82f6','#f59e0b','#a78bfa','#f43f5e','#06b6d4','#84cc16','#fb923c','#e879f9','#94a3b8'];
+  asifCityNewMap = cityMap;
 
   // ── Render HTML ───────────────────────────────────────────
   container.innerHTML = `
@@ -3491,7 +3485,8 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
       <div style="height:260px"><canvas id="asif-chart-daily"></canvas></div>
     </div>
     <div class="chart-card" style="max-width:560px;margin:0 auto 20px">
-      <div style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px;text-align:center">🗺️ חלוקה לפי עיר</div>
+      <div id="asif-city-title" style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:14px;text-align:center">🗺️ חלוקה לפי עיר · לקוחות חדשים</div>
+      <div id="asif-city-note" style="display:none;padding:40px 12px;text-align:center;color:var(--muted);font-size:12px"></div>
       <div style="height:300px"><canvas id="asif-chart-city"></canvas></div>
     </div>
   `;
@@ -3526,6 +3521,57 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
   drawAsifTimeSeries();
 
   // ── Chart 3: חלוקה לפי עיר (Doughnut) ───────────────────
+  // New customers come from asif_customers above. All paid orders per city come
+  // from store_city_daily (files1/asif-city-sync.mjs). Paged, because PostgREST
+  // stops at 1000 rows and a long range has several thousand.
+  asifCityAllMap = null;
+  try {
+    const allMap = {};
+    for (let off = 0; ; off += 1000) {
+      const page = await supaFetch('store_city_daily',
+        `?select=city,orders_count&client_id=eq.${clientId}&date=gte.${from}&date=lte.${to}&order=date.asc,city.asc&limit=1000&offset=${off}`);
+      (page||[]).forEach(r => { allMap[r.city] = (allMap[r.city]||0) + parseInt(r.orders_count||0); });
+      if (!page || page.length < 1000) break;
+    }
+    asifCityAllMap = allMap;
+  } catch (e) {
+    console.warn('store_city_daily:', e.message);
+  }
+  drawAsifCityChart();
+}
+
+// Draws the city doughnut for the current view: new customers, or every paid
+// order when the chart is switched to "סה״כ לקוחות".
+function drawAsifCityChart() {
+  if (asifChart3) { asifChart3.destroy(); asifChart3 = null; }
+  const canvas = document.getElementById('asif-chart-city');
+  if (!canvas) return;
+
+  const isTotal = asifViewMode === 'total';
+  const cityMap = (isTotal ? asifCityAllMap : asifCityNewMap) || {};
+  const unit    = isTotal ? 'הזמנות' : 'לקוחות';
+
+  const title = document.getElementById('asif-city-title');
+  if (title) title.textContent = `🗺️ חלוקה לפי עיר · ${isTotal ? 'כל ההזמנות' : 'לקוחות חדשים'}`;
+  const note  = document.getElementById('asif-city-note');
+  const empty = !Object.keys(cityMap).length;
+  canvas.parentElement.style.display = empty ? 'none' : '';
+  if (note) {
+    note.style.display = empty ? '' : 'none';
+    note.textContent = isTotal && !asifCityAllMap
+      ? 'נתוני הערים של כל ההזמנות לא נטענו. נסו לרענן את הדף.'
+      : 'אין נתוני ערים לטווח הזה';
+  }
+  if (empty) return;
+
+  const sortedCities = Object.keys(cityMap).sort((a,b) => cityMap[b]-cityMap[a]);
+  const TOP = 9;
+  const topCities    = sortedCities.slice(0, TOP);
+  const otherCount   = sortedCities.slice(TOP).reduce((s,c) => s+cityMap[c], 0);
+  if (otherCount > 0) topCities.push('אחר');
+  const cityData     = topCities.map(c => c==='אחר' ? otherCount : cityMap[c]);
+  const PIE_COLORS = ['#10b981','#3b82f6','#f59e0b','#a78bfa','#f43f5e','#06b6d4','#84cc16','#fb923c','#e879f9','#94a3b8'];
+
   const cityTotal = cityData.reduce((a,b) => a+b, 0);
 
   // Customer counts drawn on the slices themselves, plus the total in the
@@ -3568,7 +3614,7 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
         ctx.fillText(cityTotal.toLocaleString(), first.x, first.y - 8);
         ctx.fillStyle = '#94a3b8';
         ctx.font = '600 11px Heebo, sans-serif';
-        ctx.fillText('לקוחות', first.x, first.y + 12);
+        ctx.fillText(unit, first.x, first.y + 12);
       }
       ctx.restore();
     }
@@ -3625,7 +3671,7 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
           callbacks: {
             label: i => {
               const pct = cityTotal ? ((i.parsed/cityTotal)*100).toFixed(1) : '0.0';
-              return `${i.label}: ${i.parsed} לקוחות (${pct}%)`;
+              return `${i.label}: ${i.parsed} ${unit} (${pct}%)`;
             }
           }
         }
@@ -3665,6 +3711,7 @@ function setAsifViewMode(mode) {
   const modeLabel = mode === 'total' ? 'סה״כ לקוחות וסך מכירות' : 'לקוחות חדשים וערך הזמנות';
   if (lbl) lbl.textContent = `📈 ${modeLabel} ${labels[asifChartPeriod]}`;
   if (mode === 'total') drawAsifStoreTimeSeries(); else drawAsifTimeSeries();
+  drawAsifCityChart();
 }
 
 function drawAsifStoreTimeSeries() {
