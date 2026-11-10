@@ -3606,6 +3606,9 @@ async function renderAsifNewCustomers(clientId, from, to, label, sym) {
                   text: `${label}  ${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%`,
                   fillStyle: ds.backgroundColor[i],
                   strokeStyle: ds.backgroundColor[i],
+                  // Chart.js 4 paints legend text with item.fontColor only, so a
+                  // custom item without it falls back to black on the dark card.
+                  fontColor: '#cbd5e1',
                   lineWidth: 0,
                   hidden: !chart.getDataVisibility(i),
                   index: i
